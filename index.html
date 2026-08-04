@@ -243,36 +243,19 @@
   const FEEL = { decay: 0.08, k: 90, c: 18 };
   const STORAGE_KEY = 'rouletteWalletTransactions';
 
-  // ---- Firebase (optional cross-device sync) ----
-  // Local-only mode works with zero setup: transactions live in this
-  // browser's localStorage and nothing here is used.
-  //
-  // To sync across devices via your own Firebase project:
-  //   1. https://console.firebase.google.com -> Add project.
-  //   2. In the project: click the </> (web) icon -> register an app ->
-  //      copy the firebaseConfig object it shows you into the object below.
-  //   3. Build -> Authentication -> Get started -> Sign-in method -> enable
-  //      "Google".
-  //   4. Build -> Firestore Database -> Create database (production mode).
-  //   5. Firestore -> Rules tab -> paste:
-  //        rules_version = '2';
-  //        service cloud.firestore {
-  //          match /databases/{database}/documents {
-  //            match /users/{userId}/transactions/{transactionId} {
-  //              allow read, write: if request.auth != null && request.auth.uid == userId;
-  //            }
-  //          }
-  //        }
-  //   6. If you host this file somewhere (Netlify, GitHub Pages, etc), add
-  //      that domain under Authentication -> Settings -> Authorized domains.
-  //      (localhost is already authorized by default for local testing.)
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID",
+const firebaseConfig = {
+  apiKey: "AIzaSyDN6mXxeO58avD7GORRrHLPCkRlDcQwGgI",
+  authDomain: "roulette-wallet.firebaseapp.com",
+  projectId: "roulette-wallet",
+  storageBucket: "roulette-wallet.firebasestorage.app",
+  messagingSenderId: "543737534991",
+  appId: "1:543737534991:web:92586f6b224c799b68a17a",
+  measurementId: "G-K9BE1N5LWZ"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
   };
   function isFirebaseConfigured(){
     return !!(firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('YOUR_'));
