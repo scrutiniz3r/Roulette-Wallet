@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roulette Wallet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
+<style>
+  :root[data-theme="dark"]{
+    --screen-bg:#101014; --card-bg:#17171d; --chip-bg:#1c1c22; --chip-hover-bg:#26262e;
+    --primary-text:#f5f4f2; --fg-rgb:245,244,242; --track-off-bg:rgba(255,255,255,0.14);
+    --sep-color:rgba(255,255,255,0.08);
+  }
+  :root[data-theme="light"]{
+    --screen-bg:#f7f6f3; --card-bg:#ffffff; --chip-bg:color-mix(in srgb, var(--accent) 16%, white);
+    --chip-hover-bg:color-mix(in srgb, var(--accent) 28%, white);
+    --primary-text:#17171d; --fg-rgb:23,23,29; --track-off-bg:color-mix(in srgb, var(--accent) 16%, white);
+    --sep-color:rgba(0,0,0,0.08);
+  }
+  :root{ --accent:#ff4d6d; --accent-rgb:255,77,109; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:#0b0b0f; padding:40px; font-family:'Manrope', system-ui, sans-serif;
+  }
+  @keyframes wr-toast-in{from{opacity:0;transform:translate(-50%,10px)}to{opacity:1;transform:translate(-50%,0)}}
+  @keyframes wr-flash-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes wr-predict-pulse{
+    0%{ box-shadow:0 0 0 0 rgba(var(--accent-rgb),0.55); }
+    100%{ box-shadow:0 0 0 10px rgba(var(--accent-rgb),0); }
+  }
+  @keyframes wr-row-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+  .phone{
+    width:412px; height:892px; border-radius:44px; background:#000; padding:14px;
+    box-shadow:0 30px 80px rgba(0,0,0,0.55); position:relative;
+  }
+  .screen{
+    height:100%; width:100%; display:flex; flex-direction:column;
+    background:var(--screen-bg); color:var(--primary-text); box-sizing:border-box;
+    padding:22px 20px 24px; position:relative; overflow:hidden; border-radius:32px;
+  }
+
+  .row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex:0 0 auto; }
+  .chip{
+    width:36px; height:36px; border-radius:12px; background:var(--chip-bg);
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+    color:rgba(var(--fg-rgb),0.75); cursor:pointer; user-select:none;
+  }
+  .chip:hover{ background:var(--chip-hover-bg); }
+  .title{ font-size:16px; font-weight:600; color:var(--primary-text); }
+
+  .card{
+    background:var(--card-bg); border-radius:20px; padding:18px 20px; display:flex;
+    flex-direction:column; gap:6px; margin-bottom:24px;
+  }
+  .card-label{ font-size:11px; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:rgba(var(--fg-rgb),0.45); }
+  .card-main{ display:flex; align-items:flex-end; justify-content:space-between; gap:10px; }
+  .amount-row{ display:flex; align-items:baseline; gap:10px; min-height:24px; }
+  .amount-text{ font-size:32px; font-weight:800; color:var(--primary-text); }
+  .flash{ font-size:13px; font-weight:700; color:var(--accent); animation:wr-flash-in 0.2s ease; display:none; }
+  .flash.show{ display:inline; }
+  .total-toggle{ display:flex; align-items:center; gap:6px; cursor:pointer; padding-bottom:3px; user-select:none; }
+  .toggle-label{ font-size:11px; font-weight:600; color:rgba(var(--fg-rgb),0.55); }
+  .toggle-track{
+    width:36px; height:20px; border-radius:100px; padding:2px; box-sizing:border-box;
+    display:flex; transition:background 0.15s ease; background:var(--track-off-bg); justify-content:flex-start;
+  }
+  .toggle-track.on{ background:var(--accent); justify-content:flex-end; }
+  .toggle-knob{ width:16px; height:16px; border-radius:50%; background:#fff; }
+  .subtitle{ font-size:11px; font-weight:600; color:var(--accent); display:none; }
+  .subtitle.show{ display:block; }
+
+  .reels-wrap{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+  .reel-titles{ display:flex; justify-content:space-between; padding:0 4px; margin-bottom:10px; }
+  .reel-title-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .reel-title{ font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--accent); }
+
+  .reels-area{ position:relative; height:280px; }
+  .band{
+    position:absolute; left:-4px; right:-4px; top:50%; transform:translateY(-50%);
+    height:56px; border-top:1px solid var(--accent); border-bottom:1px solid var(--accent); pointer-events:none;
+  }
+  .reels-row{ display:flex; height:100%; position:relative; z-index:1; }
+  .reel{
+    flex:1; position:relative; overflow:hidden; touch-action:none; cursor:grab; border-radius:10px;
+    -webkit-mask-image:linear-gradient(to bottom, transparent, black 22%, black 78%, transparent);
+    mask-image:linear-gradient(to bottom, transparent, black 22%, black 78%, transparent);
+  }
+  .reel:active{ cursor:grabbing; }
+  .reel.predicted-pulse{ animation: wr-predict-pulse 0.7s ease; }
+  .slot{
+    position:absolute; left:0; right:0; top:50%; display:flex; align-items:center; justify-content:center;
+    height:56px; padding:0 6px; box-sizing:border-box; pointer-events:none;
+  }
+  .slot-label{
+    max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    text-align:center; display:block;
+  }
+  .fine-btn{
+    position:absolute; top:50%; width:26px; height:56px; display:flex; align-items:center; justify-content:center;
+    font-size:15px; font-weight:700; cursor:pointer; z-index:2; color:rgba(var(--fg-rgb),0.28);
+  }
+  .fine-btn:hover{ color:rgba(var(--fg-rgb),0.65); }
+  .fine-minus{ left:50%; transform:translate(-100%,-50%); margin-left:-34px; }
+  .fine-plus{ left:50%; transform:translate(0,-50%); margin-left:34px; }
+
+  .add-row{ display:flex; justify-content:space-between; gap:8px; margin-top:14px; }
+  .add-col{ flex:1; display:flex; justify-content:center; }
+  .add-chip{
+    width:36px; height:36px; border-radius:10px; background:var(--chip-bg);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    color:rgba(var(--fg-rgb),0.7);
+  }
+  .add-chip:hover{ background:var(--chip-hover-bg); }
+  .add-chip:active{ transform:scale(0.94); }
+
+  .cta-wrap{ position:relative; margin-top:18px; flex:0 0 auto; }
+  .toast{
+    position:absolute; left:50%; bottom:76px; transform:translate(-50%,0); background:#1c1c22; color:#f5f4f2;
+    font-size:12px; font-weight:600; padding:8px 14px; border-radius:100px; white-space:nowrap;
+    animation:wr-toast-in 0.25s ease; box-shadow:0 8px 20px rgba(0,0,0,0.4); max-width:340px;
+    overflow:hidden; text-overflow:ellipsis; display:none;
+  }
+  .toast.show{ display:block; }
+  .cta{
+    background:var(--accent); border-radius:18px; padding:16px; display:flex; flex-direction:column;
+    align-items:center; gap:2px; cursor:pointer;
+  }
+  :root[data-theme="light"] .cta{ background:color-mix(in srgb, var(--accent) 55%, white); }
+  .cta:active{ transform:scale(0.97); }
+  .cta:hover{ filter:brightness(1.06); }
+  .cta-main{ font-size:15px; font-weight:800; color:#1a0508; }
+  .cta-sub{ font-size:12px; font-weight:600; color:rgba(26,5,8,0.65); }
+
+  .entry-view{ flex:1; display:flex; flex-direction:column; min-height:0; }
+
+  .history-view{ flex:1; display:flex; flex-direction:column; min-height:0; }
+  .sync-bar{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 16px; border-radius:14px; background:var(--card-bg); margin-bottom:12px; flex:0 0 auto;
+  }
+  .sync-info{ font-size:11.5px; font-weight:600; color:rgba(var(--fg-rgb),0.55); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  .sync-btn{ font-size:11.5px; font-weight:700; color:var(--accent); cursor:pointer; white-space:nowrap; flex:0 0 auto; }
+  .sync-btn:hover{ filter:brightness(1.15); }
+  .history-summary{
+    background:var(--card-bg); border-radius:20px; padding:16px 20px; display:flex;
+    justify-content:space-between; align-items:center; margin-bottom:16px; flex:0 0 auto;
+  }
+  .history-summary-count{ font-size:12px; font-weight:600; color:rgba(var(--fg-rgb),0.55); }
+  .history-summary-total{ font-size:18px; font-weight:800; color:var(--primary-text); }
+  .history-list{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-right:2px; }
+  .history-row{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:13px 4px; border-bottom:1px solid var(--sep-color); animation:wr-row-in 0.18s ease;
+  }
+  .history-left{ min-width:0; }
+  .history-cat{ font-size:14px; font-weight:700; color:var(--primary-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .history-mode{ font-size:11.5px; font-weight:600; color:rgba(var(--fg-rgb),0.5); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .history-amount{ font-size:14px; font-weight:800; color:var(--accent); white-space:nowrap; flex:0 0 auto; }
+  .history-empty{ font-size:13px; font-weight:600; color:rgba(var(--fg-rgb),0.4); text-align:center; padding:60px 20px; }
+  .history-actions{ flex:0 0 auto; display:flex; justify-content:center; align-items:center; gap:18px; padding:14px 0 2px; }
+  .history-action{ font-size:12px; font-weight:700; cursor:pointer; color:var(--accent); }
+  .history-action:hover{ filter:brightness(1.15); }
+  .history-action-danger{ color:rgba(var(--fg-rgb),0.4); }
+  .history-action-danger:hover{ color:var(--accent); filter:none; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="screen" id="screen" data-theme="dark">
+
+    <div class="row-top">
+      <div class="chip" id="navChip" title="Transactions"></div>
+      <div class="title" id="titleEl">New expense</div>
+      <div class="chip" id="themeToggle" title="Toggle theme">
+        <svg width="14" height="14" viewBox="0 0 14 14"><circle id="themeIcon" cx="7" cy="7" r="5" stroke-width="1.4"></circle></svg>
+      </div>
+    </div>
+
+    <div class="entry-view" id="entryView">
+      <div class="card">
+        <div class="card-label">Spent this month</div>
+        <div class="card-main">
+          <div class="amount-row">
+            <div class="amount-text" id="amountText">₹0</div>
+            <div class="flash" id="flashText"></div>
+          </div>
+          <div class="total-toggle" id="totalToggle">
+            <span class="toggle-label">Total</span>
+            <div class="toggle-track on" id="toggleTrack">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+        </div>
+        <div class="subtitle" id="subtitle"></div>
+      </div>
+
+      <div class="reels-wrap">
+        <div class="reel-titles" id="reelTitles"></div>
+
+        <div class="reels-area">
+          <div class="band"></div>
+          <div class="reels-row" id="reelsRow"></div>
+        </div>
+
+        <div class="add-row" id="addRow"></div>
+      </div>
+
+      <div class="cta-wrap">
+        <div class="toast" id="toast"></div>
+        <div class="cta" id="ctaBtn">
+          <div class="cta-main">Log expense</div>
+          <div class="cta-sub" id="ctaPreview"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="history-view" id="historyView" style="display:none;">
+      <div class="sync-bar" id="syncBar" style="display:none;">
+        <div class="sync-info" id="syncInfo">Saved on this device only</div>
+        <div class="sync-btn" id="syncBtn">Sign in with Google</div>
+      </div>
+      <div class="history-summary">
+        <div class="history-summary-count" id="historyCount">0 transactions</div>
+        <div class="history-summary-total" id="historyTotal">₹0</div>
+      </div>
+      <div class="history-list" id="historyList"></div>
+      <div class="history-actions">
+        <div class="history-action" id="historyExport">Export CSV</div>
+        <div class="history-action history-action-danger" id="historyClear">Clear all</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script type="module">
+(async function(){
+  const ITEM_H = 56;
+  const FEEL = { decay: 0.08, k: 90, c: 18 };
+  const STORAGE_KEY = 'rouletteWalletTransactions';
+
+  // ---- Firebase (optional cross-device sync) ----
+  // Local-only mode works with zero setup: transactions live in this
+  // browser's localStorage and nothing here is used.
+  //
+  // To sync across devices via your own Firebase project:
+  //   1. https://console.firebase.google.com -> Add project.
+  //   2. In the project: click the </> (web) icon -> register an app ->
+  //      copy the firebaseConfig object it shows you into the object below.
+  //   3. Build -> Authentication -> Get started -> Sign-in method -> enable
+  //      "Google".
+  //   4. Build -> Firestore Database -> Create database (production mode).
+  //   5. Firestore -> Rules tab -> paste:
+  //        rules_version = '2';
+  //        service cloud.firestore {
+  //          match /databases/{database}/documents {
+  //            match /users/{userId}/transactions/{transactionId} {
+  //              allow read, write: if request.auth != null && request.auth.uid == userId;
+  //            }
+  //          }
+  //        }
+  //   6. If you host this file somewhere (Netlify, GitHub Pages, etc), add
+  //      that domain under Authentication -> Settings -> Authorized domains.
+  //      (localhost is already authorized by default for local testing.)
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID",
+  };
+  function isFirebaseConfigured(){
+    return !!(firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith('YOUR_'));
+  }
+
+  let fb = null; // { app, auth, db, authMod, fsMod } once loaded, else null
+  let unsubscribeSnapshot = null;
+
+  async function initFirebase(){
+    if (!isFirebaseConfigured()) return null;
+    try {
+      const [appMod, authMod, fsMod] = await Promise.all([
+        import('https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js'),
+        import('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js'),
+        import('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js'),
+      ]);
+      const app = appMod.initializeApp(firebaseConfig);
+      const auth = authMod.getAuth(app);
+      const db = fsMod.getFirestore(app);
+      try { await fsMod.enableIndexedDbPersistence(db); } catch(e){ /* multi-tab or unsupported; fine without it */ }
+      return { app, auth, db, authMod, fsMod };
+    } catch(e){
+      console.warn('Firebase unavailable, continuing in local-only mode.', e);
+      return null;
+    }
+  }
+
+  function collectionRef(){
+    return fb.fsMod.collection(fb.db, 'users', state.user.uid, 'transactions');
+  }
+
+  const reelsConfig = {
+    category: { values: ['Chai','Petrol','Temple','Groceries','Food & Dining','Travel','Shopping','Bills'], format: v => v, title: 'Category' },
+    amount:   { values: [20,50,75,95,120,150,200,300,500,650,800,1000,1200,1500,2000], format: v => '₹' + v.toLocaleString('en-IN'), title: 'Amount' },
+    mode:     { values: ['Cash','UPI','Debit Card','TataNeu Credit Card','BPCL Credit Card','Net Banking'], format: v => v, title: 'Mode' },
+  };
+  const order = ['category','amount','mode'];
+
+  const categoryRanges = {
+    'Chai': [15, 100, 5],
+    'Food & Dining': [150, 750, 25],
+    'Petrol': [200, 4000, 100],
+    'Temple': [10, 500, 10],
+    'Groceries': [100, 2000, 50],
+    'Travel': [200, 5000, 100],
+    'Shopping': [100, 3000, 50],
+    'Bills': [200, 3000, 100],
+    default: [50, 1000, 25],
+  };
+
+  function loadTransactions(){
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch(e){ return []; }
+  }
+  function saveTransactions(){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.transactions)); } catch(e){}
+  }
+
+  const state = {
+    positions: { amount: reelsConfig.amount.values.indexOf(95), mode: 0, category: 0 },
+    velocities: { amount: 0, mode: 0, category: 0 },
+    dragging: { amount: false, mode: false, category: false },
+    flashDelta: null,
+    toastText: null,
+    amountFine: 0,
+    showTotal: true,
+    theme: 'dark',
+    view: 'entry',
+    user: null,
+    transactions: loadTransactions(),
+  };
+
+  const drag = {};
+  let lastT = null;
+  const wasSettled = { amount: true, mode: true, category: true };
+  const lastTickIdx = { amount: state.positions.amount, mode: 0, category: 0 };
+  let lastCategoryValue = reelsConfig.category.values[0];
+  let toastTimer = null, flashTimer = null;
+  let fineTimeout = null, fineInterval = null;
+
+  function mod(n, m){ return ((n % m) + m) % m; }
+  function buzz(ms){ try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e){} }
+  function isDark(){ return state.theme !== 'light'; }
+
+  function buildRange(min, max, step){
+    const arr = [];
+    for (let v = min; v <= max; v += step) arr.push(v);
+    if (arr[arr.length-1] !== max) arr.push(max);
+    return arr;
+  }
+
+  // "Spent this month" and the per-mode split are derived fresh from the
+  // transaction log every render, rather than tracked as running counters.
+  // That keeps them correct automatically when transactions arrive from
+  // another device via sync.
+  function computeMonthTotals(){
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth();
+    let total = 0;
+    const byMode = {};
+    state.transactions.forEach(t => {
+      const d = new Date(t.timestamp);
+      if (d.getFullYear() === y && d.getMonth() === m){
+        total += t.amount;
+        byMode[t.mode] = (byMode[t.mode] || 0) + t.amount;
+      }
+    });
+    return { total, byMode };
+  }
+
+  // --- auto-fill ("usual pick" for a category) ---
+  // Not a trained model: it looks at your past logged transactions for this
+  // category and learns two things:
+  //  - typical amount: a recency-weighted average (recent spends count more
+  //    than old ones), snapped to the nearest value on that category's reel.
+  //    Using an average instead of an exact-match makes this useful even
+  //    when the amount is rarely identical twice (e.g. petrol fill-ups).
+  //  - usual payment mode: recency-weighted most-frequent mode, so it still
+  //    adapts if your payment habits shift over time.
+  function weightedMostFrequent(rowsAsc, key){
+    const weights = new Map();
+    rowsAsc.forEach((r, i) => {
+      const w = i + 1; // later index = more recent = heavier weight
+      weights.set(r[key], (weights.get(r[key]) || 0) + w);
+    });
+    let best = null, bestW = -1;
+    weights.forEach((w, v) => { if (w > bestW){ bestW = w; best = v; } });
+    return best;
+  }
+  function nearestIndex(values, target){
+    let bestI = 0, bestDiff = Infinity;
+    values.forEach((v, i) => {
+      const diff = Math.abs(v - target);
+      if (diff < bestDiff){ bestDiff = diff; bestI = i; }
+    });
+    return bestI;
+  }
+  function predictForCategory(catValue){
+    const rows = state.transactions
+      .filter(t => t.category === catValue)
+      .sort((a, b) => a.timestamp - b.timestamp);
+    if (!rows.length) return null;
+    let wSum = 0, wTotal = 0;
+    rows.forEach((r, i) => {
+      const w = i + 1;
+      wSum += r.amount * w;
+      wTotal += w;
+    });
+    return {
+      amount: wSum / wTotal,
+      mode: weightedMostFrequent(rows, 'mode'),
+      sampleSize: rows.length,
+    };
+  }
+
+  // Snap a reel to a specific value index, taking the shortest wrap-around
+  // path from its current position, then flash a highlight so the user
+  // notices the auto-fill happened.
+  function spinTo(key, targetIndex){
+    if (targetIndex == null || targetIndex < 0) return;
+    const len = reelsConfig[key].values.length;
+    const cur = state.positions[key];
+    const candidate = targetIndex + len * Math.round((cur - targetIndex) / len);
+    state.positions[key] = candidate;
+    state.velocities[key] = 0;
+    if (key === 'amount') state.amountFine = 0;
+    renderReel(key);
+    renderTotals();
+    renderCta();
+    pulse(key);
+  }
+
+  function pulse(key){
+    const el = reelEls[key].el;
+    el.classList.remove('predicted-pulse');
+    void el.offsetWidth;
+    el.classList.add('predicted-pulse');
+    setTimeout(() => el.classList.remove('predicted-pulse'), 700);
+  }
+
+  function handleCategoryChange(catValue){
+    const cfg = categoryRanges[catValue] || categoryRanges.default;
+    reelsConfig.amount.values = buildRange(cfg[0], cfg[1], cfg[2]);
+
+    const prediction = predictForCategory(catValue);
+    if (prediction){
+      spinTo('amount', nearestIndex(reelsConfig.amount.values, prediction.amount));
+      if (prediction.mode != null){
+        const modeIdx = reelsConfig.mode.values.indexOf(prediction.mode);
+        if (modeIdx >= 0) spinTo('mode', modeIdx);
+      }
+      showPredictionToast(catValue, prediction.sampleSize);
+    } else {
+      handleShuffle('amount');
+    }
+  }
+
+  function showPredictionToast(catValue, n){
+    clearTimeout(toastTimer);
+    state.toastText = `Suggested from ${n} past ${catValue} ${n === 1 ? 'entry' : 'entries'}`;
+    renderToast();
+    toastTimer = setTimeout(() => { state.toastText = null; renderToast(); }, 1800);
+  }
+
+  const screenEl = document.getElementById('screen');
+  const navChipEl = document.getElementById('navChip');
+  const titleEl = document.getElementById('titleEl');
+  const themeToggleEl = document.getElementById('themeToggle');
+  const themeIconEl = document.getElementById('themeIcon');
+  const amountTextEl = document.getElementById('amountText');
+  const flashTextEl = document.getElementById('flashText');
+  const totalToggleEl = document.getElementById('totalToggle');
+  const toggleTrackEl = document.getElementById('toggleTrack');
+  const subtitleEl = document.getElementById('subtitle');
+  const reelTitlesEl = document.getElementById('reelTitles');
+  const reelsRowEl = document.getElementById('reelsRow');
+  const addRowEl = document.getElementById('addRow');
+  const toastEl = document.getElementById('toast');
+  const ctaBtnEl = document.getElementById('ctaBtn');
+  const ctaPreviewEl = document.getElementById('ctaPreview');
+  const entryViewEl = document.getElementById('entryView');
+  const historyViewEl = document.getElementById('historyView');
+  const historyListEl = document.getElementById('historyList');
+  const historyCountEl = document.getElementById('historyCount');
+  const historyTotalEl = document.getElementById('historyTotal');
+  const historyClearEl = document.getElementById('historyClear');
+  const historyExportEl = document.getElementById('historyExport');
+  const syncBarEl = document.getElementById('syncBar');
+  const syncInfoEl = document.getElementById('syncInfo');
+  const syncBtnEl = document.getElementById('syncBtn');
+
+  const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+  const HISTORY_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
+
+  // Build static per-reel DOM once (5 slot placeholders each), keep refs.
+  const reelEls = {};
+  order.forEach(key => {
+    const titleCol = document.createElement('div');
+    titleCol.className = 'reel-title-col';
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'reel-title';
+    titleDiv.textContent = reelsConfig[key].title;
+    titleCol.appendChild(titleDiv);
+    reelTitlesEl.appendChild(titleCol);
+
+    const reelDiv = document.createElement('div');
+    reelDiv.className = 'reel';
+
+    const slots = [];
+    for (let j = -2; j <= 2; j++){
+      const s = document.createElement('div');
+      s.className = 'slot';
+      const label = document.createElement('span');
+      label.className = 'slot-label';
+      s.appendChild(label);
+      reelDiv.appendChild(s);
+      slots.push({ wrap: s, label });
+    }
+
+    let fineMinus = null, finePlus = null;
+    if (key === 'amount'){
+      fineMinus = document.createElement('div');
+      fineMinus.className = 'fine-btn fine-minus';
+      fineMinus.textContent = '−';
+      reelDiv.appendChild(fineMinus);
+
+      finePlus = document.createElement('div');
+      finePlus.className = 'fine-btn fine-plus';
+      finePlus.textContent = '+';
+      reelDiv.appendChild(finePlus);
+
+      const fineDown = (dir) => (e) => {
+        e.stopPropagation();
+        adjustFine(dir);
+        clearTimeout(fineTimeout);
+        fineTimeout = setTimeout(() => {
+          fineInterval = setInterval(() => adjustFine(dir), 110);
+        }, 380);
+      };
+      const fineStop = (e) => { if (e) e.stopPropagation(); clearTimeout(fineTimeout); clearInterval(fineInterval); };
+
+      fineMinus.addEventListener('pointerdown', fineDown(-1));
+      fineMinus.addEventListener('pointerup', fineStop);
+      fineMinus.addEventListener('pointerleave', fineStop);
+      fineMinus.addEventListener('pointercancel', fineStop);
+
+      finePlus.addEventListener('pointerdown', fineDown(1));
+      finePlus.addEventListener('pointerup', fineStop);
+      finePlus.addEventListener('pointerleave', fineStop);
+      finePlus.addEventListener('pointercancel', fineStop);
+    }
+
+    reelDiv.addEventListener('pointerdown', (e) => handleDown(key, e));
+    reelDiv.addEventListener('pointermove', (e) => handleMove(key, e));
+    reelDiv.addEventListener('pointerup', () => handleUp(key));
+    reelDiv.addEventListener('pointercancel', () => handleUp(key));
+
+    reelsRowEl.appendChild(reelDiv);
+    reelEls[key] = { slots, el: reelDiv };
+
+    const addCol = document.createElement('div');
+    addCol.className = 'add-col';
+    const addChip = document.createElement('div');
+    addChip.className = 'add-chip';
+    addChip.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
+    addChip.addEventListener('pointerup', () => addValue(key));
+    addCol.appendChild(addChip);
+    addRowEl.appendChild(addCol);
+  });
+
+  function adjustFine(dir){
+    buzz(6);
+    state.amountFine += dir;
+    renderReel('amount');
+    renderCta();
+  }
+
+  function handleDown(key, e){
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch(err){}
+    drag[key] = { y: e.clientY, t: performance.now(), pos: state.positions[key] };
+    state.dragging[key] = true;
+    state.velocities[key] = 0;
+    if (key === 'amount') { state.amountFine = 0; renderCta(); }
+  }
+
+  function handleMove(key, e){
+    const d = drag[key];
+    if (!d || !state.dragging[key]) return;
+    const now = performance.now();
+    const deltaY = e.clientY - d.y;
+    const newPos = d.pos - deltaY / ITEM_H;
+    const dt = Math.max((now - (d.lastT || d.t)) / 1000, 0.001);
+    const instV = d.lastPos != null ? (newPos - d.lastPos) / dt : 0;
+    d.lastT = now; d.lastPos = newPos;
+    state.positions[key] = newPos;
+    state.velocities[key] = instV;
+    renderReel(key);
+    renderTotals();
+    renderCta();
+  }
+
+  function handleUp(key){
+    if (!state.dragging[key]) return;
+    state.dragging[key] = false;
+  }
+
+  function handleShuffle(key){
+    if (state.dragging[key]) return;
+    const sign = Math.random() < 0.5 ? -1 : 1;
+    state.velocities[key] = sign * (7 + Math.random() * 7);
+    if (key === 'amount') state.amountFine = 0;
+  }
+
+  function addValue(key){
+    const cfg = reelsConfig[key];
+    const labelPrompt = key === 'amount' ? 'Enter amount' : key === 'mode' ? 'Enter mode of transaction' : 'Enter category';
+    const raw = window.prompt(labelPrompt);
+    if (!raw) return;
+    let value;
+    if (key === 'amount'){
+      value = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+      if (isNaN(value)) return;
+    } else {
+      value = String(raw).trim();
+      if (!value) return;
+    }
+    if (!cfg.values.includes(value)){
+      cfg.values.push(value);
+      if (key === 'amount') cfg.values.sort((a,b) => a-b);
+    }
+    const newIdx = cfg.values.indexOf(value);
+    state.positions[key] = newIdx;
+    state.velocities[key] = 0;
+    if (key === 'amount') state.amountFine = 0;
+    renderReel(key);
+    renderCta();
+  }
+
+  // Adds a transaction either to Firestore (when signed in, so it syncs to
+  // every device) or to localStorage (device-only). Firestore's onSnapshot
+  // listener (see onSignedIn) is what actually updates state.transactions
+  // and re-renders in the cloud case.
+  function addTransaction(record){
+    if (fb && state.user){
+      fb.fsMod.addDoc(collectionRef(), record).catch(err => {
+        console.error('Could not save to the cloud, keeping it on this device instead.', err);
+        state.transactions.push({ id: 'local-' + Date.now(), ...record });
+        saveTransactions();
+        if (state.view === 'history') renderHistory();
+      });
+    } else {
+      state.transactions.push({
+        id: Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        ...record,
+      });
+      saveTransactions();
+    }
+  }
+
+  function logExpense(){
+    const idx = k => mod(Math.round(state.positions[k]), reelsConfig[k].values.length);
+    const amount = reelsConfig.amount.values[idx('amount')] + state.amountFine;
+    const modeVal = reelsConfig.mode.values[idx('mode')];
+    const categoryVal = reelsConfig.category.values[idx('category')];
+    clearTimeout(toastTimer); clearTimeout(flashTimer);
+    state.flashDelta = amount;
+    state.toastText = `Added ₹${amount.toLocaleString('en-IN')} · ${modeVal} · ${categoryVal}`;
+    addTransaction({ category: categoryVal, amount, mode: modeVal, timestamp: Date.now() });
+    renderTotals(); renderToast();
+    flashTimer = setTimeout(() => { state.flashDelta = null; renderTotals(); }, 1400);
+    toastTimer = setTimeout(() => { state.toastText = null; renderToast(); }, 2200);
+  }
+
+  function toggleTheme(){
+    buzz(6);
+    state.theme = isDark() ? 'light' : 'dark';
+    applyTheme();
+  }
+
+  function applyTheme(){
+    screenEl.setAttribute('data-theme', state.theme);
+    document.documentElement.setAttribute('data-theme', state.theme);
+    if (isDark()){
+      themeIconEl.setAttribute('fill', 'var(--primary-text)');
+    } else {
+      themeIconEl.setAttribute('fill', 'none');
+    }
+    themeIconEl.setAttribute('stroke', `rgba(var(--fg-rgb),0.8)`);
+    renderAll();
+  }
+
+  function setView(v){
+    state.view = v;
+    entryViewEl.style.display = v === 'entry' ? '' : 'none';
+    historyViewEl.style.display = v === 'history' ? '' : 'none';
+    titleEl.textContent = v === 'entry' ? 'New expense' : 'Transactions';
+    navChipEl.innerHTML = v === 'entry' ? HISTORY_ICON : BACK_ICON;
+    navChipEl.title = v === 'entry' ? 'Transactions' : 'Back';
+    if (v === 'history') renderHistory();
+  }
+
+  function updateSyncUI(){
+    if (!isFirebaseConfigured()){ syncBarEl.style.display = 'none'; return; }
+    syncBarEl.style.display = '';
+    if (state.user){
+      syncInfoEl.textContent = 'Synced as ' + (state.user.email || state.user.displayName || 'you');
+      syncBtnEl.textContent = 'Sign out';
+    } else {
+      syncInfoEl.textContent = 'Saved on this device only';
+      syncBtnEl.textContent = 'Sign in with Google';
+    }
+  }
+
+  async function onSignedIn(user){
+    state.user = user;
+    updateSyncUI();
+
+    // One-time merge: push any purely local (never-synced) transactions up
+    // to this account, so switching to cloud sync doesn't lose device data.
+    const localOnly = loadTransactions().filter(t => !t.cloud);
+    for (const t of localOnly){
+      try {
+        await fb.fsMod.addDoc(collectionRef(), { category: t.category, amount: t.amount, mode: t.mode, timestamp: t.timestamp });
+      } catch(e){ console.error('Could not migrate a local transaction to the cloud', e); }
+    }
+
+    if (unsubscribeSnapshot) unsubscribeSnapshot();
+    const q = fb.fsMod.query(collectionRef(), fb.fsMod.orderBy('timestamp', 'desc'));
+    unsubscribeSnapshot = fb.fsMod.onSnapshot(q, snap => {
+      state.transactions = snap.docs.map(d => ({ id: d.id, cloud: true, ...d.data() }));
+      saveTransactions(); // mirror locally so sign-out / offline still shows last-known data
+      renderTotals();
+      renderCta();
+      if (state.view === 'history') renderHistory();
+    }, err => console.error('Firestore sync error', err));
+  }
+
+  function onSignedOut(){
+    state.user = null;
+    updateSyncUI();
+    if (unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    state.transactions = loadTransactions();
+    renderTotals();
+    renderCta();
+    if (state.view === 'history') renderHistory();
+  }
+
+  themeToggleEl.addEventListener('pointerup', toggleTheme);
+  totalToggleEl.addEventListener('pointerup', () => {
+    buzz(6);
+    state.showTotal = !state.showTotal;
+    renderTotals();
+  });
+  ctaBtnEl.addEventListener('pointerup', logExpense);
+  navChipEl.addEventListener('pointerup', () => {
+    buzz(6);
+    setView(state.view === 'entry' ? 'history' : 'entry');
+  });
+  historyClearEl.addEventListener('pointerup', async () => {
+    if (!state.transactions.length) return;
+    if (!window.confirm('Clear all logged transactions? This cannot be undone.')) return;
+    if (fb && state.user){
+      try {
+        const snap = await fb.fsMod.getDocs(collectionRef());
+        const batch = fb.fsMod.writeBatch(fb.db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      } catch(e){ console.error('Failed to clear cloud transactions', e); }
+    } else {
+      state.transactions = [];
+      saveTransactions();
+      renderHistory();
+    }
+  });
+  historyExportEl.addEventListener('pointerup', exportCSV);
+  syncBtnEl.addEventListener('pointerup', async () => {
+    if (!fb) return;
+    buzz(6);
+    try {
+      if (state.user){
+        await fb.authMod.signOut(fb.auth);
+      } else {
+        await fb.authMod.signInWithPopup(fb.auth, new fb.authMod.GoogleAuthProvider());
+      }
+    } catch(e){ console.error('Sign-in/out failed', e); }
+  });
+
+  function csvEscape(value){
+    const s = String(value);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function exportCSV(){
+    if (!state.transactions.length) return;
+    const rows = [['Date', 'Time', 'Category', 'Amount (INR)', 'Mode']];
+    [...state.transactions]
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .forEach(t => {
+        const d = new Date(t.timestamp);
+        rows.push([
+          d.toLocaleDateString('en-CA'),
+          d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+          t.category,
+          t.amount,
+          t.mode,
+        ]);
+      });
+    const csv = rows.map(r => r.map(csvEscape).join(',')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'roulette-wallet-transactions-' + new Date().toISOString().slice(0, 10) + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function renderReel(key){
+    const cfg = reelsConfig[key];
+    const len = cfg.values.length;
+    const p = state.positions[key];
+    const base = Math.floor(p);
+    const { slots } = reelEls[key];
+    for (let j = -2; j <= 2; j++){
+      const abs = base + j;
+      const value = cfg.values[mod(abs, len)];
+      const dist = Math.abs(abs - p);
+      const ty = (abs - p) * ITEM_H;
+      const scale = 1 - Math.min(dist, 2) * 0.16;
+      const isCenter = dist < 0.5;
+      const displayValue = (key === 'amount' && isCenter) ? value + state.amountFine : value;
+      const { wrap, label } = slots[j + 2];
+      label.textContent = cfg.format(displayValue);
+      wrap.style.transform = `translateY(calc(-50% + ${ty}px)) scale(${scale})`;
+      wrap.style.fontSize = isCenter ? '18px' : '14px';
+      wrap.style.fontWeight = isCenter ? '700' : '500';
+      wrap.style.color = isCenter ? 'var(--primary-text)' : `rgba(var(--fg-rgb),${Math.max(0.18, 1 - dist*0.42)})`;
+    }
+  }
+
+  function selectedLabel(key){
+    const cfg = reelsConfig[key];
+    const selIdx = mod(Math.round(state.positions[key]), cfg.values.length);
+    let v = cfg.values[selIdx];
+    if (key === 'amount') v += state.amountFine;
+    return cfg.format(v);
+  }
+
+  function renderCta(){
+    ctaPreviewEl.textContent = `${selectedLabel('category')} · ${selectedLabel('amount')} · ${selectedLabel('mode')}`;
+  }
+
+  function renderTotals(){
+    const currentMode = selectedLabel('mode');
+    const { total, byMode } = computeMonthTotals();
+    const displayedTotal = state.showTotal ? total : (byMode[currentMode] || 0);
+    amountTextEl.textContent = '₹' + displayedTotal.toLocaleString('en-IN');
+    if (state.flashDelta != null){
+      flashTextEl.textContent = '+₹' + state.flashDelta.toLocaleString('en-IN');
+      flashTextEl.classList.add('show');
+    } else {
+      flashTextEl.classList.remove('show');
+    }
+    toggleTrackEl.classList.toggle('on', state.showTotal);
+    subtitleEl.classList.toggle('show', !state.showTotal);
+    subtitleEl.textContent = 'via ' + currentMode;
+  }
+
+  function renderToast(){
+    if (state.toastText){
+      toastEl.textContent = state.toastText;
+      toastEl.classList.add('show');
+    } else {
+      toastEl.classList.remove('show');
+    }
+  }
+
+  function formatHistoryDate(ts){
+    const d = new Date(ts);
+    const now = new Date();
+    const time = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return 'Today · ' + time;
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday · ' + time;
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + time;
+  }
+
+  function renderHistory(){
+    const txs = [...state.transactions].sort((a, b) => b.timestamp - a.timestamp);
+    historyCountEl.textContent = txs.length + (txs.length === 1 ? ' transaction' : ' transactions');
+    const total = txs.reduce((s, t) => s + t.amount, 0);
+    historyTotalEl.textContent = '₹' + total.toLocaleString('en-IN');
+    historyClearEl.style.display = txs.length ? '' : 'none';
+    historyExportEl.style.display = txs.length ? '' : 'none';
+
+    historyListEl.innerHTML = '';
+    if (!txs.length){
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = 'No expenses logged yet.';
+      historyListEl.appendChild(empty);
+      return;
+    }
+    txs.forEach(t => {
+      const row = document.createElement('div');
+      row.className = 'history-row';
+
+      const left = document.createElement('div');
+      left.className = 'history-left';
+      const cat = document.createElement('div');
+      cat.className = 'history-cat';
+      cat.textContent = t.category;
+      const modeLine = document.createElement('div');
+      modeLine.className = 'history-mode';
+      modeLine.textContent = t.mode + ' · ' + formatHistoryDate(t.timestamp);
+      left.appendChild(cat);
+      left.appendChild(modeLine);
+
+      const amt = document.createElement('div');
+      amt.className = 'history-amount';
+      amt.textContent = '₹' + t.amount.toLocaleString('en-IN');
+
+      row.appendChild(left);
+      row.appendChild(amt);
+      historyListEl.appendChild(row);
+    });
+  }
+
+  function renderAll(){
+    order.forEach(renderReel);
+    renderTotals();
+    renderCta();
+    renderToast();
+    if (state.view === 'history') renderHistory();
+  }
+
+  function tick(t){
+    if (lastT == null) lastT = t;
+    const dt = Math.min((t - lastT) / 1000, 0.04);
+    lastT = t;
+    const { decay, k, c } = FEEL;
+    let moved = false;
+    order.forEach(key => {
+      if (state.dragging[key]) return;
+      let p = state.positions[key], v = state.velocities[key];
+      if (Math.abs(v) > 0.5){
+        p += v * dt;
+        v *= Math.pow(decay, dt);
+        moved = true;
+      } else {
+        const target = Math.round(p);
+        const diffV = target - p;
+        if (Math.abs(diffV) < 0.0008 && Math.abs(v) < 0.01){
+          p = target; v = 0;
+        } else {
+          const accel = k * diffV - c * v;
+          v += accel * dt;
+          p += v * dt;
+          moved = true;
+        }
+      }
+      state.positions[key] = p; state.velocities[key] = v;
+      const roundedIdx = Math.round(p);
+      if (lastTickIdx[key] !== roundedIdx){
+        lastTickIdx[key] = roundedIdx;
+        buzz(6);
+      }
+      const settled = v === 0 && p === Math.round(p);
+      if (settled && !wasSettled[key]) buzz(16);
+      if (key === 'category' && settled && !wasSettled.category){
+        const val = reelsConfig.category.values[mod(Math.round(p), reelsConfig.category.values.length)];
+        if (val !== lastCategoryValue){
+          lastCategoryValue = val;
+          handleCategoryChange(val);
+        }
+      }
+      wasSettled[key] = settled;
+    });
+    requestAnimationFrame(tick);
+    if (moved){
+      order.forEach(renderReel);
+      renderTotals();
+      renderCta();
+    }
+  }
+
+  setView('entry');
+  applyTheme();
+  requestAnimationFrame(tick);
+
+  fb = await initFirebase();
+  updateSyncUI();
+  if (fb){
+    fb.authMod.onAuthStateChanged(fb.auth, user => {
+      if (user) onSignedIn(user); else onSignedOut();
+    });
+  }
+})();
+</script>
+</body>
+</html>
