@@ -12,7 +12,11 @@ http.createServer((req, res) => {
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('not found'); return; }
     const ext = path.extname(filePath);
-    const type = ext === '.html' ? 'text/html' : ext === '.js' ? 'text/javascript' : 'application/octet-stream';
+    const types = {
+      '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json',
+      '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.svg': 'image/svg+xml',
+    };
+    const type = types[ext] || 'application/octet-stream';
     res.writeHead(200, { 'Content-Type': type });
     res.end(data);
   });

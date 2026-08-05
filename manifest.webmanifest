@@ -1,0 +1,31 @@
+{
+  "name": "Roulette Wallet",
+  "short_name": "Roulette Wallet",
+  "description": "Slot-machine style expense tracker with drag-to-spin reels and smart amount/mode auto-fill.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#101014",
+  "theme_color": "#101014",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log an expense",
+      "short_name": "New expense",
+      "url": "./index.html",
+      "description": "Jump straight to logging a new expense"
+    },
+    {
+      "name": "Transaction history",
+      "short_name": "Transactions",
+      "url": "./index.html#history",
+      "description": "View your logged transactions"
+    }
+  ]
+}

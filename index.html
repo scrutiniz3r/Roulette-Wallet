@@ -2,8 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Roulette Wallet</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="theme-color" content="#101014">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Roulette Wallet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
 <style>
@@ -42,15 +49,24 @@
     background:var(--screen-bg); color:var(--primary-text); box-sizing:border-box;
     padding:22px 20px 24px; position:relative; overflow:hidden; border-radius:32px;
   }
+  /* On an actual phone the browser viewport already *is* the phone - drop
+     the decorative bezel/frame so the app fills the real screen edge to
+     edge instead of rendering a tiny mockup phone inside it. */
+  @media (max-width:480px), (display-mode:standalone){
+    body{ padding:0; background:var(--screen-bg); }
+    .phone{ width:100vw; height:100dvh; border-radius:0; padding:0; box-shadow:none; background:var(--screen-bg); }
+    .screen{ border-radius:0; padding:calc(18px + env(safe-area-inset-top)) 20px calc(18px + env(safe-area-inset-bottom)); }
+  }
 
-  .row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex:0 0 auto; }
+  .row-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex:0 0 auto; gap:8px; }
+  .row-top-right{ display:flex; align-items:center; gap:8px; flex:0 0 auto; }
   .chip{
     width:36px; height:36px; border-radius:12px; background:var(--chip-bg);
     display:flex; align-items:center; justify-content:center; font-size:20px;
-    color:rgba(var(--fg-rgb),0.75); cursor:pointer; user-select:none;
+    color:rgba(var(--fg-rgb),0.75); cursor:pointer; user-select:none; flex:0 0 auto;
   }
   .chip:hover{ background:var(--chip-hover-bg); }
-  .title{ font-size:16px; font-weight:600; color:var(--primary-text); }
+  .title{ font-size:16px; font-weight:600; color:var(--primary-text); flex:1; text-align:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .card{
     background:var(--card-bg); border-radius:20px; padding:18px 20px; display:flex;
@@ -175,8 +191,13 @@
     <div class="row-top">
       <div class="chip" id="navChip" title="Transactions"></div>
       <div class="title" id="titleEl">New expense</div>
-      <div class="chip" id="themeToggle" title="Toggle theme">
-        <svg width="14" height="14" viewBox="0 0 14 14"><circle id="themeIcon" cx="7" cy="7" r="5" stroke-width="1.4"></circle></svg>
+      <div class="row-top-right">
+        <div class="chip" id="installChip" title="Install app" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1v7M4 5l3 3 3-3M2 12h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
+        <div class="chip" id="themeToggle" title="Toggle theme">
+          <svg width="14" height="14" viewBox="0 0 14 14"><circle id="themeIcon" cx="7" cy="7" r="5" stroke-width="1.4"></circle></svg>
+        </div>
       </div>
     </div>
 
@@ -509,6 +530,7 @@
   const syncBarEl = document.getElementById('syncBar');
   const syncInfoEl = document.getElementById('syncInfo');
   const syncBtnEl = document.getElementById('syncBtn');
+  const installChipEl = document.getElementById('installChip');
 
   const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
   const HISTORY_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
@@ -719,6 +741,49 @@
     navChipEl.title = v === 'entry' ? 'Transactions' : 'Back';
     if (v === 'history') renderHistory();
   }
+
+  // --- installable app (PWA) ---
+  // A literal OS home-screen widget isn't something a website can create -
+  // that needs a native app (iOS has no web API for it at all; Android's
+  // equivalent is an experimental, Chrome-only origin trial, not something
+  // reliable to ship here). What we *can* do, and what this wires up: a
+  // real "Install" button backed by the browser's install prompt, so the
+  // app gets a home-screen icon and opens full-screen like a native app,
+  // plus long-press shortcuts on that icon (see manifest.webmanifest).
+  let deferredInstallPrompt = null;
+  function isStandalone(){
+    return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  }
+  function isIOS(){
+    return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+  }
+  function updateInstallUI(){
+    if (isStandalone()){ installChipEl.style.display = 'none'; return; }
+    installChipEl.style.display = (deferredInstallPrompt || isIOS()) ? '' : 'none';
+  }
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    updateInstallUI();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateInstallUI();
+  });
+  installChipEl.addEventListener('pointerup', async () => {
+    buzz(6);
+    if (deferredInstallPrompt){
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+      updateInstallUI();
+    } else if (isIOS()){
+      clearTimeout(toastTimer);
+      state.toastText = 'On iPhone: tap Share, then "Add to Home Screen"';
+      renderToast();
+      toastTimer = setTimeout(() => { state.toastText = null; renderToast(); }, 3200);
+    }
+  });
 
   function updateSyncUI(){
     if (!isFirebaseConfigured()){ syncBarEl.style.display = 'none'; return; }
@@ -1007,9 +1072,14 @@
     }
   }
 
-  setView('entry');
+  setView(location.hash === '#history' ? 'history' : 'entry');
   applyTheme();
   requestAnimationFrame(tick);
+  updateInstallUI();
+
+  if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('Service worker registration failed', e));
+  }
 
   fb = await initFirebase();
   updateSyncUI();
