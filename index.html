@@ -143,7 +143,8 @@
   .toast.show{ display:block; }
   .cta{
     background:var(--accent); border-radius:18px; padding:16px; display:flex; flex-direction:column;
-    align-items:center; gap:2px; cursor:pointer;
+    align-items:center; gap:2px; cursor:pointer; user-select:none; -webkit-user-select:none;
+    -webkit-touch-callout:none;
   }
   :root[data-theme="light"] .cta{ background:color-mix(in srgb, var(--accent) 55%, white); }
   .cta:active{ transform:scale(0.97); }
@@ -1002,6 +1003,7 @@
     if (code === 'auth/unauthorized-domain') return 'This domain isn\'t authorized in Firebase yet - add it under Authentication -> Settings -> Authorized domains.';
     if (code === 'auth/operation-not-allowed') return 'Google sign-in isn\'t enabled on this Firebase project yet - enable it under Authentication -> Sign-in method.';
     if (code === 'auth/network-request-failed') return 'Sign-in failed - check your connection and try again.';
+    if (code === 'auth/popup-blocked') return 'Your browser blocked the sign-in popup - allow popups for this site and try again.';
     if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return null; // user backed out, not an error
     return 'Sign-in failed: ' + (code || (e && e.message) || 'unknown error');
   }
@@ -1013,25 +1015,23 @@
       if (state.user){
         await fb.authMod.signOut(fb.auth);
       } else {
-        try {
-          await fb.authMod.signInWithPopup(fb.auth, new fb.authMod.GoogleAuthProvider());
-        } catch(popupErr){
-          // Popups are unreliable on mobile browsers and inside installed
-          // PWAs (some block them outright) - fall back to a full redirect,
-          // which onAuthStateChanged/getRedirectResult below picks back up
-          // after the page reloads. Don't fall back if the user just closed
-          // the popup themselves.
-          if (popupErr && (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/operation-not-supported-in-this-environment')){
-            await fb.authMod.signInWithRedirect(fb.auth, new fb.authMod.GoogleAuthProvider());
-            return;
-          }
-          throw popupErr;
-        }
+        // Deliberately popup-only: signInWithRedirect looks appealing for
+        // mobile/installed PWAs, but it round-trips through Firebase's own
+        // auth-handler page and relies on session storage surviving that
+        // trip. Inside an installed PWA on Android that storage isn't
+        // reliably preserved, and the redirect dead-ends on Firebase's own
+        // "The requested action is invalid" error page - not something
+        // this app's error handling can even catch, since the browser has
+        // fully navigated away. Popup keeps the failure recoverable.
+        await fb.authMod.signInWithPopup(fb.auth, new fb.authMod.GoogleAuthProvider());
       }
     } catch(e){
       console.error('Sign-in/out failed', e);
-      const msg = describeAuthError(e);
-      if (msg) showErrorToast(msg);
+      let msg = describeAuthError(e);
+      if (msg && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') && isStandalone()){
+        msg = 'Google sign-in doesn\'t work reliably inside the installed app on Android. Open this site in Chrome (not the installed icon) to sign in - your data will still sync afterward.';
+      }
+      if (msg) showErrorToast(msg, 6000);
     }
   });
 
@@ -1257,12 +1257,6 @@
   if (fb){
     fb.authMod.onAuthStateChanged(fb.auth, user => {
       if (user) onSignedIn(user); else onSignedOut();
-    });
-    // Completes the signInWithRedirect fallback above, if it was used.
-    fb.authMod.getRedirectResult(fb.auth).catch(e => {
-      console.error('Redirect sign-in failed', e);
-      const msg = describeAuthError(e);
-      if (msg) showErrorToast(msg);
     });
   }
 })();

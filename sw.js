@@ -1,4 +1,4 @@
-const CACHE_NAME = 'roulette-wallet-v1';
+const CACHE_NAME = 'roulette-wallet-v2';
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -15,23 +15,22 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Cache-first for the app shell, falling back to network and refreshing the
-// cache in the background. Firestore/Google auth requests aren't same-origin
-// GETs against this shell, so they pass straight through to the network.
+// Network-first for the app shell: always serve the latest deploy when
+// online (this app changes often), only falling back to the cached copy
+// when there's no network at all. Cache-first previously meant an
+// installed/visited copy of the app could keep serving an old version
+// indefinitely, since nothing ever forced a refetch.
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   if (new URL(event.request.url).origin !== self.location.origin) return;
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
+    fetch(event.request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
