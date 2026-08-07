@@ -182,6 +182,39 @@
   .history-action:hover{ filter:brightness(1.15); }
   .history-action-danger{ color:rgba(var(--fg-rgb),0.4); }
   .history-action-danger:hover{ color:var(--accent); filter:none; }
+  .history-delete{
+    flex:0 0 auto; width:28px; height:28px; border-radius:9px; display:flex; align-items:center;
+    justify-content:center; color:rgba(var(--fg-rgb),0.32); cursor:pointer;
+  }
+  .history-delete:hover{ color:var(--accent); background:var(--chip-bg); }
+
+  .modal-overlay{
+    position:absolute; inset:0; background:rgba(0,0,0,0.55); display:none;
+    align-items:flex-end; justify-content:center; z-index:50;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal-card{
+    width:100%; background:var(--card-bg); border-radius:22px 22px 0 0;
+    padding:20px 20px calc(20px + env(safe-area-inset-bottom)); box-sizing:border-box;
+    animation:wr-modal-in 0.2s ease;
+  }
+  @keyframes wr-modal-in{ from{ transform:translateY(14px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+  .modal-title{ font-size:15px; font-weight:700; color:var(--primary-text); margin-bottom:14px; }
+  .modal-input{
+    width:100%; background:var(--chip-bg); border:1.5px solid transparent; border-radius:12px;
+    padding:13px 14px; font-size:15px; font-family:inherit; color:var(--primary-text);
+    box-sizing:border-box; outline:none; margin-bottom:16px;
+  }
+  .modal-input:focus{ border-color:var(--accent); }
+  .modal-actions{ display:flex; gap:10px; }
+  .modal-btn{
+    flex:1; text-align:center; padding:13px; border-radius:14px; font-size:14px; font-weight:700; cursor:pointer;
+  }
+  .modal-btn-cancel{ background:var(--chip-bg); color:rgba(var(--fg-rgb),0.7); }
+  .modal-btn-cancel:hover{ background:var(--chip-hover-bg); }
+  .modal-btn-save{ background:var(--accent); color:#1a0508; }
+  :root[data-theme="light"] .modal-btn-save{ background:color-mix(in srgb, var(--accent) 55%, white); }
+  .modal-btn-save:hover{ filter:brightness(1.06); }
 </style>
 </head>
 <body>
@@ -193,7 +226,7 @@
       <div class="title" id="titleEl">New expense</div>
       <div class="row-top-right">
         <div class="chip" id="installChip" title="Install app" style="display:none;">
-          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1v7M4 5l3 3 3-3M2 12h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <svg width="14" height="14" viewBox="0 0 14 14"><rect x="3.5" y="1" width="7" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M7 5v4M5 7h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
         </div>
         <div class="chip" id="themeToggle" title="Toggle theme">
           <svg width="14" height="14" viewBox="0 0 14 14"><circle id="themeIcon" cx="7" cy="7" r="5" stroke-width="1.4"></circle></svg>
@@ -228,6 +261,7 @@
         </div>
 
         <div class="add-row" id="addRow"></div>
+        <div class="add-row" id="editRow"></div>
       </div>
 
       <div class="cta-wrap">
@@ -252,6 +286,17 @@
       <div class="history-actions">
         <div class="history-action" id="historyExport">Export CSV</div>
         <div class="history-action history-action-danger" id="historyClear">Clear all</div>
+      </div>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+      <div class="modal-card">
+        <div class="modal-title" id="modalTitle">Enter value</div>
+        <input class="modal-input" id="modalInput" type="text" autocomplete="off">
+        <div class="modal-actions">
+          <div class="modal-btn modal-btn-cancel" id="modalCancel">Cancel</div>
+          <div class="modal-btn modal-btn-save" id="modalSave">Save</div>
+        </div>
       </div>
     </div>
 
@@ -531,9 +576,43 @@
   const syncInfoEl = document.getElementById('syncInfo');
   const syncBtnEl = document.getElementById('syncBtn');
   const installChipEl = document.getElementById('installChip');
+  const editRowEl = document.getElementById('editRow');
+  const modalOverlayEl = document.getElementById('modalOverlay');
+  const modalTitleEl = document.getElementById('modalTitle');
+  const modalInputEl = document.getElementById('modalInput');
+  const modalCancelEl = document.getElementById('modalCancel');
+  const modalSaveEl = document.getElementById('modalSave');
+
+  // Small in-app bottom-sheet used instead of window.prompt() (which renders
+  // as an ugly unstyled native browser dialog) for adding/editing reel values.
+  let modalResolve = null;
+  function showInputModal({ title, initialValue = '', inputType = 'text' }){
+    return new Promise(resolve => {
+      modalResolve = resolve;
+      modalTitleEl.textContent = title;
+      modalInputEl.value = initialValue;
+      modalInputEl.type = inputType;
+      modalInputEl.inputMode = inputType === 'number' ? 'decimal' : 'text';
+      modalOverlayEl.classList.add('show');
+      setTimeout(() => { modalInputEl.focus(); modalInputEl.select(); }, 50);
+    });
+  }
+  function closeModal(value){
+    modalOverlayEl.classList.remove('show');
+    if (modalResolve){ modalResolve(value); modalResolve = null; }
+  }
+  modalCancelEl.addEventListener('pointerup', () => closeModal(null));
+  modalSaveEl.addEventListener('pointerup', () => closeModal(modalInputEl.value));
+  modalOverlayEl.addEventListener('pointerup', (e) => { if (e.target === modalOverlayEl) closeModal(null); });
+  modalInputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter'){ e.preventDefault(); closeModal(modalInputEl.value); }
+    else if (e.key === 'Escape'){ closeModal(null); }
+  });
 
   const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
   const HISTORY_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
+  const EDIT_ICON = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M9.5 1.5l3 3L5 12H2V9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"></path></svg>';
+  const TRASH_ICON = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M3 3.5l.6 8.5h6.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
 
   // Build static per-reel DOM once (5 slot placeholders each), keep refs.
   const reelEls = {};
@@ -609,6 +688,22 @@
     addChip.addEventListener('pointerup', () => addValue(key));
     addCol.appendChild(addChip);
     addRowEl.appendChild(addCol);
+
+    // Editing the currently-selected value only makes sense for the two
+    // free-text reels (renaming an amount doesn't mean anything - fine
+    // adjust already covers nudging it). Amount still gets an empty
+    // placeholder column so the three columns stay aligned.
+    const editCol = document.createElement('div');
+    editCol.className = 'add-col';
+    if (key !== 'amount'){
+      const editChip = document.createElement('div');
+      editChip.className = 'add-chip';
+      editChip.title = 'Edit';
+      editChip.innerHTML = EDIT_ICON;
+      editChip.addEventListener('pointerup', () => editValue(key));
+      editCol.appendChild(editChip);
+    }
+    editRowEl.appendChild(editCol);
   });
 
   function adjustFine(dir){
@@ -654,11 +749,11 @@
     if (key === 'amount') state.amountFine = 0;
   }
 
-  function addValue(key){
+  async function addValue(key){
     const cfg = reelsConfig[key];
-    const labelPrompt = key === 'amount' ? 'Enter amount' : key === 'mode' ? 'Enter mode of transaction' : 'Enter category';
-    const raw = window.prompt(labelPrompt);
-    if (!raw) return;
+    const title = key === 'amount' ? 'Enter amount' : key === 'mode' ? 'Enter mode of transaction' : 'Enter category';
+    const raw = await showInputModal({ title, inputType: key === 'amount' ? 'number' : 'text' });
+    if (raw == null) return;
     let value;
     if (key === 'amount'){
       value = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
@@ -675,6 +770,23 @@
     state.positions[key] = newIdx;
     state.velocities[key] = 0;
     if (key === 'amount') state.amountFine = 0;
+    renderReel(key);
+    renderCta();
+  }
+
+  // Renames the reel's currently-centered value in place (does not touch
+  // wording already saved on past transactions - only affects what shows
+  // up going forward).
+  async function editValue(key){
+    const cfg = reelsConfig[key];
+    const idx = mod(Math.round(state.positions[key]), cfg.values.length);
+    const current = cfg.values[idx];
+    const title = key === 'mode' ? 'Edit mode of transaction' : 'Edit category';
+    const raw = await showInputModal({ title, initialValue: String(current) });
+    if (raw == null) return;
+    const value = String(raw).trim();
+    if (!value || value === String(current)) return;
+    cfg.values[idx] = value;
     renderReel(key);
     renderCta();
   }
@@ -858,6 +970,21 @@
       renderHistory();
     }
   });
+  async function deleteTransaction(t){
+    if (!window.confirm(`Delete "${t.category} · ₹${t.amount.toLocaleString('en-IN')}"?`)) return;
+    if (fb && state.user && t.cloud){
+      try {
+        await fb.fsMod.deleteDoc(fb.fsMod.doc(collectionRef(), t.id));
+        // onSnapshot listener re-renders once Firestore confirms the delete.
+      } catch(e){ console.error('Failed to delete cloud transaction', e); }
+    } else {
+      state.transactions = state.transactions.filter(x => x.id !== t.id);
+      saveTransactions();
+      renderHistory();
+      renderTotals();
+    }
+  }
+
   historyExportEl.addEventListener('pointerup', exportCSV);
   syncBtnEl.addEventListener('pointerup', async () => {
     if (!fb) return;
@@ -1008,8 +1135,15 @@
       amt.className = 'history-amount';
       amt.textContent = '₹' + t.amount.toLocaleString('en-IN');
 
+      const del = document.createElement('div');
+      del.className = 'history-delete';
+      del.title = 'Delete';
+      del.innerHTML = TRASH_ICON;
+      del.addEventListener('pointerup', (e) => { e.stopPropagation(); deleteTransaction(t); });
+
       row.appendChild(left);
       row.appendChild(amt);
+      row.appendChild(del);
       historyListEl.appendChild(row);
     });
   }
