@@ -26,8 +26,8 @@
     --sep-color:rgba(0,0,0,0.08);
   }
   :root{ --accent:#ff4d6d; --accent-rgb:255,77,109; }
-  *{ box-sizing:border-box; }
-  html,body{ margin:0; padding:0; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
   body{
     min-height:100vh; display:flex; align-items:center; justify-content:center;
     background:#0b0b0f; padding:40px; font-family:'Manrope', system-ui, sans-serif;
@@ -54,7 +54,10 @@
      edge instead of rendering a tiny mockup phone inside it. */
   @media (max-width:480px), (display-mode:standalone){
     body{ padding:0; background:var(--screen-bg); }
-    .phone{ width:100vw; height:100dvh; border-radius:0; padding:0; box-shadow:none; background:var(--screen-bg); }
+    .phone{
+      width:100vw; border-radius:0; padding:0; box-shadow:none; background:var(--screen-bg);
+      height:100vh; height:100svh; /* svh = smallest viewport height, so it never renders taller than what's actually visible (dvh briefly reports a too-tall value right after a reload, which is what was pushing the page into a scrollable state) */
+    }
     .screen{ border-radius:0; padding:calc(18px + env(safe-area-inset-top)) 20px calc(18px + env(safe-area-inset-bottom)); }
   }
 
@@ -971,7 +974,7 @@
       renderHistory();
     }
   });
-  async function deleteTransaction(t){
+  async function deleteTransaction(t, rowEl){
     if (!window.confirm(`Delete "${t.category} · ₹${t.amount.toLocaleString('en-IN')}"?`)) return;
     if (fb && state.user && t.cloud){
       try {
@@ -981,7 +984,16 @@
     } else {
       state.transactions = state.transactions.filter(x => x.id !== t.id);
       saveTransactions();
-      renderHistory();
+      // Remove just this row instead of tearing down and rebuilding the
+      // whole list: rebuilding put a brand-new element under the finger
+      // right as it lifted, which the browser read as tapping/highlighting
+      // whatever row ended up there.
+      if (rowEl && state.transactions.length){
+        rowEl.remove();
+        updateHistorySummary();
+      } else {
+        renderHistory();
+      }
       renderTotals();
     }
   }
@@ -1137,13 +1149,18 @@
     return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ' · ' + time;
   }
 
+  function updateHistorySummary(){
+    const count = state.transactions.length;
+    historyCountEl.textContent = count + (count === 1 ? ' transaction' : ' transactions');
+    const total = state.transactions.reduce((s, t) => s + t.amount, 0);
+    historyTotalEl.textContent = '₹' + total.toLocaleString('en-IN');
+    historyClearEl.style.display = count ? '' : 'none';
+    historyExportEl.style.display = count ? '' : 'none';
+  }
+
   function renderHistory(){
     const txs = [...state.transactions].sort((a, b) => b.timestamp - a.timestamp);
-    historyCountEl.textContent = txs.length + (txs.length === 1 ? ' transaction' : ' transactions');
-    const total = txs.reduce((s, t) => s + t.amount, 0);
-    historyTotalEl.textContent = '₹' + total.toLocaleString('en-IN');
-    historyClearEl.style.display = txs.length ? '' : 'none';
-    historyExportEl.style.display = txs.length ? '' : 'none';
+    updateHistorySummary();
 
     historyListEl.innerHTML = '';
     if (!txs.length){
@@ -1176,7 +1193,7 @@
       del.className = 'history-delete';
       del.title = 'Delete';
       del.innerHTML = TRASH_ICON;
-      del.addEventListener('pointerup', (e) => { e.stopPropagation(); deleteTransaction(t); });
+      del.addEventListener('pointerup', (e) => { e.stopPropagation(); deleteTransaction(t, row); });
 
       row.appendChild(left);
       row.appendChild(amt);
