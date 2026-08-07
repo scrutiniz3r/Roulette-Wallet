@@ -986,6 +986,26 @@
   }
 
   historyExportEl.addEventListener('pointerup', exportCSV);
+
+  function showErrorToast(text, ms = 4200){
+    clearTimeout(toastTimer);
+    state.toastText = text;
+    renderToast();
+    toastTimer = setTimeout(() => { state.toastText = null; renderToast(); }, ms);
+  }
+
+  // Firebase auth errors are opaque by default (silently logged to the
+  // console, which nobody checks on a phone) - surface something a user can
+  // actually act on.
+  function describeAuthError(e){
+    const code = e && e.code;
+    if (code === 'auth/unauthorized-domain') return 'This domain isn\'t authorized in Firebase yet - add it under Authentication -> Settings -> Authorized domains.';
+    if (code === 'auth/operation-not-allowed') return 'Google sign-in isn\'t enabled on this Firebase project yet - enable it under Authentication -> Sign-in method.';
+    if (code === 'auth/network-request-failed') return 'Sign-in failed - check your connection and try again.';
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return null; // user backed out, not an error
+    return 'Sign-in failed: ' + (code || (e && e.message) || 'unknown error');
+  }
+
   syncBtnEl.addEventListener('pointerup', async () => {
     if (!fb) return;
     buzz(6);
@@ -993,9 +1013,26 @@
       if (state.user){
         await fb.authMod.signOut(fb.auth);
       } else {
-        await fb.authMod.signInWithPopup(fb.auth, new fb.authMod.GoogleAuthProvider());
+        try {
+          await fb.authMod.signInWithPopup(fb.auth, new fb.authMod.GoogleAuthProvider());
+        } catch(popupErr){
+          // Popups are unreliable on mobile browsers and inside installed
+          // PWAs (some block them outright) - fall back to a full redirect,
+          // which onAuthStateChanged/getRedirectResult below picks back up
+          // after the page reloads. Don't fall back if the user just closed
+          // the popup themselves.
+          if (popupErr && (popupErr.code === 'auth/popup-blocked' || popupErr.code === 'auth/operation-not-supported-in-this-environment')){
+            await fb.authMod.signInWithRedirect(fb.auth, new fb.authMod.GoogleAuthProvider());
+            return;
+          }
+          throw popupErr;
+        }
       }
-    } catch(e){ console.error('Sign-in/out failed', e); }
+    } catch(e){
+      console.error('Sign-in/out failed', e);
+      const msg = describeAuthError(e);
+      if (msg) showErrorToast(msg);
+    }
   });
 
   function csvEscape(value){
@@ -1220,6 +1257,12 @@
   if (fb){
     fb.authMod.onAuthStateChanged(fb.auth, user => {
       if (user) onSignedIn(user); else onSignedOut();
+    });
+    // Completes the signInWithRedirect fallback above, if it was used.
+    fb.authMod.getRedirectResult(fb.auth).catch(e => {
+      console.error('Redirect sign-in failed', e);
+      const msg = describeAuthError(e);
+      if (msg) showErrorToast(msg);
     });
   }
 })();
