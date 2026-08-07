@@ -47,7 +47,13 @@
   .screen{
     height:100%; width:100%; display:flex; flex-direction:column;
     background:var(--screen-bg); color:var(--primary-text); box-sizing:border-box;
-    padding:22px 20px 24px; position:relative; overflow:hidden; border-radius:32px;
+    padding:22px 20px 24px; position:relative; border-radius:32px;
+    overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain;
+    /* Normally everything fits with no visible scroll. This is a safety
+       net for phones where the fixed-size reel area doesn't leave enough
+       room - without it, content that doesn't fit (like the Log expense
+       button) would be clipped with no way to reach it, now that the
+       outer page itself is locked from scrolling. */
   }
   /* On an actual phone the browser viewport already *is* the phone - drop
      the decorative bezel/frame so the app fills the real screen edge to
@@ -97,7 +103,7 @@
   .reel-title-col{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; }
   .reel-title{ font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--accent); }
 
-  .reels-area{ position:relative; height:280px; }
+  .reels-area{ position:relative; height:clamp(200px, 30vh, 280px); }
   .band{
     position:absolute; left:-4px; right:-4px; top:50%; transform:translateY(-50%);
     height:56px; border-top:1px solid var(--accent); border-bottom:1px solid var(--accent); pointer-events:none;
