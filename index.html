@@ -49,12 +49,14 @@
     background:var(--screen-bg); color:var(--primary-text); box-sizing:border-box;
     padding:22px 20px 24px; position:relative; border-radius:32px;
     overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-width:none; -ms-overflow-style:none;
     /* Normally everything fits with no visible scroll. This is a safety
        net for phones where the fixed-size reel area doesn't leave enough
        room - without it, content that doesn't fit (like the Log expense
        button) would be clipped with no way to reach it, now that the
        outer page itself is locked from scrolling. */
   }
+  .screen::-webkit-scrollbar{ display:none; }
   /* On an actual phone the browser viewport already *is* the phone - drop
      the decorative bezel/frame so the app fills the real screen edge to
      edge instead of rendering a tiny mockup phone inside it. */
@@ -177,7 +179,11 @@
   }
   .history-summary-count{ font-size:12px; font-weight:600; color:rgba(var(--fg-rgb),0.55); }
   .history-summary-total{ font-size:18px; font-weight:800; color:var(--primary-text); }
-  .history-list{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-right:2px; }
+  .history-list{
+    flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding-right:2px;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .history-list::-webkit-scrollbar{ display:none; }
   .history-row{
     display:flex; justify-content:space-between; align-items:center; gap:10px;
     padding:13px 4px; border-bottom:1px solid var(--sep-color); animation:wr-row-in 0.18s ease;
@@ -200,16 +206,16 @@
 
   .modal-overlay{
     position:absolute; inset:0; background:rgba(0,0,0,0.55); display:none;
-    align-items:flex-end; justify-content:center; z-index:50;
+    align-items:center; justify-content:center; z-index:50; padding:20px; box-sizing:border-box;
   }
   .modal-overlay.show{ display:flex; }
   #modalOverlay{ z-index:60; } /* stacks above the manage-list overlay when edit/confirm opens on top of it */
   .modal-card{
-    width:100%; background:var(--card-bg); border-radius:22px 22px 0 0;
-    padding:20px 20px calc(20px + env(safe-area-inset-bottom)); box-sizing:border-box;
-    animation:wr-modal-in 0.2s ease;
+    width:100%; max-width:340px; background:var(--card-bg); border-radius:22px;
+    padding:22px; box-sizing:border-box; margin:0 auto; max-height:calc(100% - 40px); overflow-y:auto;
+    animation:wr-modal-in 0.18s ease;
   }
-  @keyframes wr-modal-in{ from{ transform:translateY(14px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
+  @keyframes wr-modal-in{ from{ transform:scale(0.94); opacity:0; } to{ transform:scale(1); opacity:1; } }
   .modal-title{ font-size:15px; font-weight:700; color:var(--primary-text); margin-bottom:14px; }
   .modal-message{ font-size:13.5px; font-weight:500; color:rgba(var(--fg-rgb),0.7); line-height:1.5; margin-bottom:18px; }
   .modal-input{
@@ -230,8 +236,12 @@
   .modal-btn-danger{ background:#e5484d; color:#2a0505; }
   .modal-btn-danger:hover{ filter:brightness(1.08); }
 
-  .manage-card{ max-height:78vh; display:flex; flex-direction:column; }
-  .manage-list{ overflow-y:auto; -webkit-overflow-scrolling:touch; flex:1; min-height:0; margin-bottom:14px; }
+  .manage-card{ max-height:78vh; overflow-y:hidden; display:flex; flex-direction:column; }
+  .manage-list{
+    overflow-y:auto; -webkit-overflow-scrolling:touch; flex:1; min-height:0; margin-bottom:14px;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .manage-list::-webkit-scrollbar{ display:none; }
   .manage-row{
     display:flex; align-items:center; justify-content:space-between; gap:10px;
     padding:11px 2px; border-bottom:1px solid var(--sep-color);
@@ -382,8 +392,14 @@
   //            match /users/{userId}/transactions/{transactionId} {
   //              allow read, write: if request.auth != null && request.auth.uid == userId;
   //            }
+  //            match /users/{userId}/settings/{docId} {
+  //              allow read, write: if request.auth != null && request.auth.uid == userId;
+  //            }
   //          }
   //        }
+  //      (the settings/{docId} block syncs your custom categories/modes/
+  //      amounts across devices - if you set this project up before that
+  //      existed, add just that block and republish.)
   //   6. If you host this file somewhere (Netlify, GitHub Pages, etc), add
   //      that domain under Authentication -> Settings -> Authorized domains.
   //      (localhost is already authorized by default for local testing.)
@@ -401,6 +417,7 @@
 
   let fb = null; // { app, auth, db, authMod, fsMod } once loaded, else null
   let unsubscribeSnapshot = null;
+  let unsubscribeReelValues = null;
 
   async function initFirebase(){
     if (!isFirebaseConfigured()) return null;
@@ -427,6 +444,9 @@
 
   function collectionRef(){
     return fb.fsMod.collection(fb.db, 'users', state.user.uid, 'transactions');
+  }
+  function reelValuesDocRef(){
+    return fb.fsMod.doc(fb.db, 'users', state.user.uid, 'settings', 'reelValues');
   }
 
   const reelsConfig = {
@@ -456,6 +476,41 @@
   }
   function saveTransactions(){
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state.transactions)); } catch(e){}
+  }
+
+  // Custom categories/modes/amounts you add via the manage sheet used to
+  // live only in memory - lost on refresh, and never shared with another
+  // device even when signed in. This persists them locally and, when
+  // signed in, syncs them the same way transactions do.
+  const REEL_VALUES_KEY = 'rouletteWalletReelValues';
+  function loadReelValues(){
+    try {
+      const raw = JSON.parse(localStorage.getItem(REEL_VALUES_KEY) || 'null');
+      if (raw && typeof raw === 'object') return raw;
+    } catch(e){}
+    return null;
+  }
+  let amountByCategory = {}; // { [categoryName]: number[] } - custom amount lists per category
+  function saveReelValues(){
+    try {
+      localStorage.setItem(REEL_VALUES_KEY, JSON.stringify({
+        category: reelsConfig.category.values,
+        mode: reelsConfig.mode.values,
+        amountByCategory,
+      }));
+    } catch(e){}
+  }
+  (function applyStoredReelValues(){
+    const saved = loadReelValues();
+    if (!saved) return;
+    if (Array.isArray(saved.category) && saved.category.length) reelsConfig.category.values = saved.category;
+    if (Array.isArray(saved.mode) && saved.mode.length) reelsConfig.mode.values = saved.mode;
+    if (saved.amountByCategory && typeof saved.amountByCategory === 'object') amountByCategory = saved.amountByCategory;
+  })();
+  function getAmountValuesForCategory(catValue){
+    if (amountByCategory[catValue] && amountByCategory[catValue].length) return amountByCategory[catValue].slice();
+    const cfg = categoryRanges[catValue] || categoryRanges.default;
+    return buildRange(cfg[0], cfg[1], cfg[2]);
   }
 
   const state = {
@@ -581,8 +636,7 @@
   }
 
   function handleCategoryChange(catValue){
-    const cfg = categoryRanges[catValue] || categoryRanges.default;
-    reelsConfig.amount.values = buildRange(cfg[0], cfg[1], cfg[2]);
+    reelsConfig.amount.values = getAmountValuesForCategory(catValue);
 
     const prediction = predictForCategory(catValue);
     if (prediction){
@@ -857,6 +911,21 @@
     if (key === 'amount') state.amountFine = 0;
   }
 
+  function currentCategoryValue(){
+    const cfg = reelsConfig.category;
+    return cfg.values[mod(Math.round(state.positions.category), cfg.values.length)];
+  }
+
+  // Call after any add/edit/delete in the manage sheet, regardless of which
+  // reel it touched: snapshots the amount list under whatever category is
+  // currently selected, saves everything locally, and pushes it to Firestore
+  // if signed in.
+  function persistReelValues(){
+    amountByCategory[currentCategoryValue()] = reelsConfig.amount.values.slice();
+    saveReelValues();
+    syncReelValuesToCloud();
+  }
+
   function renderManageList(){
     const key = manageKey;
     const cfg = reelsConfig[key];
@@ -898,6 +967,7 @@
         cfg.values[i] = newVal;
         if (key === 'amount') cfg.values.sort((a, b) => a - b);
         syncPositionAfterListChange(key, trackValue);
+        persistReelValues();
         renderManageList();
         renderReel(key);
         renderCta();
@@ -922,6 +992,7 @@
         const trackValue = wasSelected ? null : cfg.values[selIdx];
         cfg.values.splice(i, 1);
         syncPositionAfterListChange(key, trackValue);
+        persistReelValues();
         renderManageList();
         renderReel(key);
         renderCta();
@@ -954,6 +1025,7 @@
       if (key === 'amount') cfg.values.sort((a, b) => a - b);
     }
     syncPositionAfterListChange(key, currentSelected);
+    persistReelValues();
     manageAddInputEl.value = '';
     renderManageList();
     renderReel(key);
@@ -1075,6 +1147,43 @@
     }
   }
 
+  async function syncReelValuesToCloud(){
+    if (!(fb && state.user)) return;
+    try {
+      await fb.fsMod.setDoc(reelValuesDocRef(), {
+        category: reelsConfig.category.values,
+        mode: reelsConfig.mode.values,
+        amountByCategory,
+      });
+    } catch(e){ console.error('Failed to sync category/mode/amount lists to the cloud', e); }
+  }
+
+  // Re-derives everything that depends on the category/mode/amount lists
+  // after they change out from under the app (a remote sync landing, or
+  // reverting to the local copy on sign-out). Deliberately does NOT go
+  // through handleCategoryChange - that also runs the auto-fill prediction
+  // and spins the reel, which would be a surprising side effect of a sync
+  // event the user didn't actually trigger.
+  function finishReelValuesRefresh(){
+    ['category', 'mode'].forEach(k => {
+      const len = reelsConfig[k].values.length;
+      state.positions[k] = Math.min(mod(Math.round(state.positions[k]), len), len - 1);
+      state.velocities[k] = 0;
+    });
+    reelsConfig.amount.values = getAmountValuesForCategory(currentCategoryValue());
+    order.forEach(renderReel);
+    renderCta();
+    if (manageKey) renderManageList();
+  }
+
+  function applyRemoteReelValues(data){
+    if (Array.isArray(data.category) && data.category.length) reelsConfig.category.values = data.category;
+    if (Array.isArray(data.mode) && data.mode.length) reelsConfig.mode.values = data.mode;
+    if (data.amountByCategory && typeof data.amountByCategory === 'object') amountByCategory = data.amountByCategory;
+    saveReelValues(); // mirror locally so sign-out / offline still shows last-known data
+    finishReelValuesRefresh();
+  }
+
   async function onSignedIn(user){
     state.user = user;
     updateSyncUI();
@@ -1097,13 +1206,34 @@
       renderCta();
       if (state.view === 'history') renderHistory();
     }, err => console.error('Firestore sync error', err));
+
+    // Custom categories/modes/amounts: adopt the cloud copy if this account
+    // already has one, otherwise seed the cloud from whatever's on this
+    // device (so the first device to sign in doesn't lose its customizations).
+    try {
+      const rvSnap = await fb.fsMod.getDoc(reelValuesDocRef());
+      if (rvSnap.exists()) applyRemoteReelValues(rvSnap.data());
+      else await syncReelValuesToCloud();
+    } catch(e){ console.error('Failed to load synced category/mode/amount lists', e); }
+    if (unsubscribeReelValues) unsubscribeReelValues();
+    unsubscribeReelValues = fb.fsMod.onSnapshot(reelValuesDocRef(), snap => {
+      if (snap.exists()) applyRemoteReelValues(snap.data());
+    }, err => console.error('Reel-values sync error', err));
   }
 
   function onSignedOut(){
     state.user = null;
     updateSyncUI();
     if (unsubscribeSnapshot){ unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+    if (unsubscribeReelValues){ unsubscribeReelValues(); unsubscribeReelValues = null; }
     state.transactions = loadTransactions();
+    const saved = loadReelValues();
+    if (saved){
+      if (Array.isArray(saved.category) && saved.category.length) reelsConfig.category.values = saved.category;
+      if (Array.isArray(saved.mode) && saved.mode.length) reelsConfig.mode.values = saved.mode;
+      if (saved.amountByCategory && typeof saved.amountByCategory === 'object') amountByCategory = saved.amountByCategory;
+    }
+    finishReelValuesRefresh();
     renderTotals();
     renderCta();
     if (state.view === 'history') renderHistory();
