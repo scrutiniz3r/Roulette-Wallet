@@ -203,6 +203,7 @@
     align-items:flex-end; justify-content:center; z-index:50;
   }
   .modal-overlay.show{ display:flex; }
+  #modalOverlay{ z-index:60; } /* stacks above the manage-list overlay when edit/confirm opens on top of it */
   .modal-card{
     width:100%; background:var(--card-bg); border-radius:22px 22px 0 0;
     padding:20px 20px calc(20px + env(safe-area-inset-bottom)); box-sizing:border-box;
@@ -210,6 +211,7 @@
   }
   @keyframes wr-modal-in{ from{ transform:translateY(14px); opacity:0; } to{ transform:translateY(0); opacity:1; } }
   .modal-title{ font-size:15px; font-weight:700; color:var(--primary-text); margin-bottom:14px; }
+  .modal-message{ font-size:13.5px; font-weight:500; color:rgba(var(--fg-rgb),0.7); line-height:1.5; margin-bottom:18px; }
   .modal-input{
     width:100%; background:var(--chip-bg); border:1.5px solid transparent; border-radius:12px;
     padding:13px 14px; font-size:15px; font-family:inherit; color:var(--primary-text);
@@ -225,6 +227,37 @@
   .modal-btn-save{ background:var(--accent); color:#1a0508; }
   :root[data-theme="light"] .modal-btn-save{ background:color-mix(in srgb, var(--accent) 55%, white); }
   .modal-btn-save:hover{ filter:brightness(1.06); }
+  .modal-btn-danger{ background:#e5484d; color:#2a0505; }
+  .modal-btn-danger:hover{ filter:brightness(1.08); }
+
+  .manage-card{ max-height:78vh; display:flex; flex-direction:column; }
+  .manage-list{ overflow-y:auto; -webkit-overflow-scrolling:touch; flex:1; min-height:0; margin-bottom:14px; }
+  .manage-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 2px; border-bottom:1px solid var(--sep-color);
+  }
+  .manage-row:last-child{ border-bottom:none; }
+  .manage-row-label{
+    font-size:14.5px; font-weight:600; color:var(--primary-text); min-width:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .manage-row.selected .manage-row-label{ color:var(--accent); }
+  .manage-row-actions{ display:flex; gap:6px; flex:0 0 auto; }
+  .manage-row-btn{
+    width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+    color:rgba(var(--fg-rgb),0.45); cursor:pointer; background:var(--chip-bg);
+  }
+  .manage-row-btn:hover{ color:var(--accent); background:var(--chip-hover-bg); }
+  .manage-row-btn-danger:hover{ color:#e5484d; }
+  .manage-add-row{ display:flex; gap:8px; align-items:center; margin-bottom:16px; }
+  .manage-add-row .modal-input{ margin-bottom:0; }
+  .manage-add-btn{
+    flex:0 0 auto; width:46px; height:46px; border-radius:12px; background:var(--accent);
+    color:#1a0508; display:flex; align-items:center; justify-content:center; font-size:20px; font-weight:700; cursor:pointer;
+  }
+  :root[data-theme="light"] .manage-add-btn{ background:color-mix(in srgb, var(--accent) 55%, white); }
+  .manage-add-btn:hover{ filter:brightness(1.06); }
+  .manage-add-btn:active{ transform:scale(0.94); }
 </style>
 </head>
 <body>
@@ -238,9 +271,7 @@
         <div class="chip" id="installChip" title="Install app" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 14 14"><rect x="3.5" y="1" width="7" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M7 5v4M5 7h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
         </div>
-        <div class="chip" id="themeToggle" title="Toggle theme">
-          <svg width="14" height="14" viewBox="0 0 14 14"><circle id="themeIcon" cx="7" cy="7" r="5" stroke-width="1.4"></circle></svg>
-        </div>
+        <div class="chip" id="themeToggle" title="Toggle theme"></div>
       </div>
     </div>
 
@@ -271,7 +302,6 @@
         </div>
 
         <div class="add-row" id="addRow"></div>
-        <div class="add-row" id="editRow"></div>
       </div>
 
       <div class="cta-wrap">
@@ -299,9 +329,24 @@
       </div>
     </div>
 
+    <div class="modal-overlay" id="manageOverlay">
+      <div class="modal-card manage-card">
+        <div class="modal-title" id="manageTitle">Manage categories</div>
+        <div class="manage-list" id="manageList"></div>
+        <div class="manage-add-row">
+          <input class="modal-input" id="manageAddInput" type="text" autocomplete="off" placeholder="Add new...">
+          <div class="manage-add-btn" id="manageAddBtn">+</div>
+        </div>
+        <div class="modal-actions">
+          <div class="modal-btn modal-btn-cancel" id="manageDoneBtn">Done</div>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="modalOverlay">
       <div class="modal-card">
         <div class="modal-title" id="modalTitle">Enter value</div>
+        <div class="modal-message" id="modalMessage" style="display:none;"></div>
         <input class="modal-input" id="modalInput" type="text" autocomplete="off">
         <div class="modal-actions">
           <div class="modal-btn modal-btn-cancel" id="modalCancel">Cancel</div>
@@ -563,7 +608,6 @@
   const navChipEl = document.getElementById('navChip');
   const titleEl = document.getElementById('titleEl');
   const themeToggleEl = document.getElementById('themeToggle');
-  const themeIconEl = document.getElementById('themeIcon');
   const amountTextEl = document.getElementById('amountText');
   const flashTextEl = document.getElementById('flashText');
   const totalToggleEl = document.getElementById('totalToggle');
@@ -586,43 +630,72 @@
   const syncInfoEl = document.getElementById('syncInfo');
   const syncBtnEl = document.getElementById('syncBtn');
   const installChipEl = document.getElementById('installChip');
-  const editRowEl = document.getElementById('editRow');
   const modalOverlayEl = document.getElementById('modalOverlay');
   const modalTitleEl = document.getElementById('modalTitle');
+  const modalMessageEl = document.getElementById('modalMessage');
   const modalInputEl = document.getElementById('modalInput');
   const modalCancelEl = document.getElementById('modalCancel');
   const modalSaveEl = document.getElementById('modalSave');
+  const manageOverlayEl = document.getElementById('manageOverlay');
+  const manageTitleEl = document.getElementById('manageTitle');
+  const manageListEl = document.getElementById('manageList');
+  const manageAddInputEl = document.getElementById('manageAddInput');
+  const manageAddBtnEl = document.getElementById('manageAddBtn');
+  const manageDoneBtnEl = document.getElementById('manageDoneBtn');
 
-  // Small in-app bottom-sheet used instead of window.prompt() (which renders
-  // as an ugly unstyled native browser dialog) for adding/editing reel values.
+  // Small in-app bottom-sheet used instead of window.prompt()/window.confirm()
+  // (which render as ugly unstyled native browser dialogs). One shared modal
+  // handles both: pass `message` for a yes/no confirm, omit it for a text
+  // input. Resolves to the typed string (input mode), true/null (confirm
+  // mode - true if confirmed), or null if dismissed either way.
   let modalResolve = null;
-  function showInputModal({ title, initialValue = '', inputType = 'text' }){
+  function showModal({ title, message = null, initialValue = '', inputType = 'text', okText = 'Save', danger = false }){
     return new Promise(resolve => {
       modalResolve = resolve;
       modalTitleEl.textContent = title;
-      modalInputEl.value = initialValue;
-      modalInputEl.type = inputType;
-      modalInputEl.inputMode = inputType === 'number' ? 'decimal' : 'text';
+      const isConfirm = message != null;
+      modalMessageEl.style.display = isConfirm ? '' : 'none';
+      modalInputEl.style.display = isConfirm ? 'none' : '';
+      if (isConfirm){
+        modalMessageEl.textContent = message;
+      } else {
+        modalInputEl.value = initialValue;
+        modalInputEl.type = inputType;
+        modalInputEl.inputMode = inputType === 'number' ? 'decimal' : 'text';
+      }
+      modalSaveEl.textContent = okText;
+      modalSaveEl.classList.toggle('modal-btn-danger', danger);
+      modalSaveEl.classList.toggle('modal-btn-save', !danger);
       modalOverlayEl.classList.add('show');
-      setTimeout(() => { modalInputEl.focus(); modalInputEl.select(); }, 50);
+      if (!isConfirm) setTimeout(() => { modalInputEl.focus(); modalInputEl.select(); }, 50);
     });
   }
+  function showInputModal(opts){ return showModal({ okText: 'Save', ...opts }); }
+  function showConfirmModal({ title, message, okText = 'Delete' }){ return showModal({ title, message, okText, danger: true }); }
   function closeModal(value){
     modalOverlayEl.classList.remove('show');
     if (modalResolve){ modalResolve(value); modalResolve = null; }
   }
   modalCancelEl.addEventListener('pointerup', () => closeModal(null));
-  modalSaveEl.addEventListener('pointerup', () => closeModal(modalInputEl.value));
+  modalSaveEl.addEventListener('pointerup', () => {
+    closeModal(modalMessageEl.style.display !== 'none' ? true : modalInputEl.value);
+  });
   modalOverlayEl.addEventListener('pointerup', (e) => { if (e.target === modalOverlayEl) closeModal(null); });
   modalInputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter'){ e.preventDefault(); closeModal(modalInputEl.value); }
-    else if (e.key === 'Escape'){ closeModal(null); }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (modalOverlayEl.classList.contains('show')) closeModal(null);
+    else if (manageOverlayEl.classList.contains('show')) closeManageModal();
   });
 
   const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
   const HISTORY_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
   const EDIT_ICON = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M9.5 1.5l3 3L5 12H2V9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"></path></svg>';
   const TRASH_ICON = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M3 3.5l.6 8.5h6.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
+  const SUN_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><circle cx="7.5" cy="7.5" r="3" fill="none" stroke="currentColor" stroke-width="1.4"></circle><path d="M7.5 0.8v1.7M7.5 12.5v1.7M14.2 7.5h-1.7M2.5 7.5H0.8M12.4 2.6l-1.2 1.2M3.8 11.2l-1.2 1.2M12.4 12.4l-1.2-1.2M3.8 3.8L2.6 2.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"></path></svg>';
+  const MOON_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><path d="M12.8 9.4A5.6 5.6 0 1 1 5.6 2.2a4.4 4.4 0 0 0 7.2 7.2z" fill="currentColor"></path></svg>';
 
   // Build static per-reel DOM once (5 slot placeholders each), keep refs.
   const reelEls = {};
@@ -694,26 +767,11 @@
     addCol.className = 'add-col';
     const addChip = document.createElement('div');
     addChip.className = 'add-chip';
+    addChip.title = 'Manage';
     addChip.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1v12M1 7h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
-    addChip.addEventListener('pointerup', () => addValue(key));
+    addChip.addEventListener('pointerup', () => openManageModal(key));
     addCol.appendChild(addChip);
     addRowEl.appendChild(addCol);
-
-    // Editing the currently-selected value only makes sense for the two
-    // free-text reels (renaming an amount doesn't mean anything - fine
-    // adjust already covers nudging it). Amount still gets an empty
-    // placeholder column so the three columns stay aligned.
-    const editCol = document.createElement('div');
-    editCol.className = 'add-col';
-    if (key !== 'amount'){
-      const editChip = document.createElement('div');
-      editChip.className = 'add-chip';
-      editChip.title = 'Edit';
-      editChip.innerHTML = EDIT_ICON;
-      editChip.addEventListener('pointerup', () => editValue(key));
-      editCol.appendChild(editChip);
-    }
-    editRowEl.appendChild(editCol);
   });
 
   function adjustFine(dir){
@@ -759,11 +817,129 @@
     if (key === 'amount') state.amountFine = 0;
   }
 
-  async function addValue(key){
+  // --- manage-values modal: add, edit, or delete a reel's entries in one place ---
+  const MANAGE_TITLES = { category: 'Manage categories', amount: 'Manage amounts', mode: 'Manage modes' };
+  const MANAGE_PLACEHOLDERS = { category: 'Add category...', amount: 'Add amount...', mode: 'Add mode...' };
+  let manageKey = null;
+
+  function openManageModal(key){
+    manageKey = key;
+    manageTitleEl.textContent = MANAGE_TITLES[key];
+    manageAddInputEl.value = '';
+    manageAddInputEl.type = key === 'amount' ? 'number' : 'text';
+    manageAddInputEl.inputMode = key === 'amount' ? 'decimal' : 'text';
+    manageAddInputEl.placeholder = MANAGE_PLACEHOLDERS[key];
+    renderManageList();
+    manageOverlayEl.classList.add('show');
+  }
+  function closeManageModal(){
+    manageOverlayEl.classList.remove('show');
+    manageKey = null;
+  }
+  manageOverlayEl.addEventListener('pointerup', (e) => { if (e.target === manageOverlayEl) closeManageModal(); });
+  manageDoneBtnEl.addEventListener('pointerup', closeManageModal);
+
+  // Keeps the reel pointed at the same logical value (or clamps sanely if
+  // that value no longer exists) after the list underneath it changes shape -
+  // edits can re-sort the amount list, deletes can shift every index after
+  // the removed one.
+  function syncPositionAfterListChange(key, targetValue){
     const cfg = reelsConfig[key];
-    const title = key === 'amount' ? 'Enter amount' : key === 'mode' ? 'Enter mode of transaction' : 'Enter category';
-    const raw = await showInputModal({ title, inputType: key === 'amount' ? 'number' : 'text' });
-    if (raw == null) return;
+    const len = cfg.values.length;
+    if (!len) return;
+    if (targetValue != null){
+      const idx = cfg.values.indexOf(targetValue);
+      state.positions[key] = idx >= 0 ? idx : 0;
+    } else {
+      state.positions[key] = Math.min(mod(Math.round(state.positions[key]), len), len - 1);
+    }
+    state.velocities[key] = 0;
+    if (key === 'amount') state.amountFine = 0;
+  }
+
+  function renderManageList(){
+    const key = manageKey;
+    const cfg = reelsConfig[key];
+    const selIdx = mod(Math.round(state.positions[key]), cfg.values.length);
+    manageListEl.innerHTML = '';
+    cfg.values.forEach((v, i) => {
+      const row = document.createElement('div');
+      row.className = 'manage-row' + (i === selIdx ? ' selected' : '');
+
+      const label = document.createElement('div');
+      label.className = 'manage-row-label';
+      label.textContent = cfg.format(v);
+
+      const actions = document.createElement('div');
+      actions.className = 'manage-row-actions';
+
+      const editBtn = document.createElement('div');
+      editBtn.className = 'manage-row-btn';
+      editBtn.title = 'Edit';
+      editBtn.innerHTML = EDIT_ICON;
+      editBtn.addEventListener('pointerup', async (e) => {
+        e.stopPropagation();
+        const raw = await showInputModal({ title: 'Edit value', initialValue: String(v), inputType: key === 'amount' ? 'number' : 'text' });
+        if (raw == null) return;
+        let newVal;
+        if (key === 'amount'){
+          newVal = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+          if (isNaN(newVal)) return;
+        } else {
+          newVal = String(raw).trim();
+          if (!newVal) return;
+        }
+        if (newVal === v) return;
+        // Track the reel's selection by its VALUE, not this row's index -
+        // editing some other row shouldn't drag the current selection onto
+        // whatever just got renamed.
+        const wasSelected = i === selIdx;
+        const trackValue = wasSelected ? newVal : cfg.values[selIdx];
+        cfg.values[i] = newVal;
+        if (key === 'amount') cfg.values.sort((a, b) => a - b);
+        syncPositionAfterListChange(key, trackValue);
+        renderManageList();
+        renderReel(key);
+        renderCta();
+      });
+
+      const delBtn = document.createElement('div');
+      delBtn.className = 'manage-row-btn manage-row-btn-danger';
+      delBtn.title = 'Delete';
+      delBtn.innerHTML = TRASH_ICON;
+      delBtn.addEventListener('pointerup', async (e) => {
+        e.stopPropagation();
+        if (cfg.values.length <= 1){
+          showErrorToast('Need at least one value here for the reel to work.');
+          return;
+        }
+        const ok = await showConfirmModal({ title: 'Delete this value?', message: `"${cfg.format(v)}" will be removed.` });
+        if (!ok) return;
+        // If we're deleting some other row, keep tracking the actually-
+        // selected value through the shift; only fall back to clamping when
+        // the selected row itself is the one being removed.
+        const wasSelected = i === selIdx;
+        const trackValue = wasSelected ? null : cfg.values[selIdx];
+        cfg.values.splice(i, 1);
+        syncPositionAfterListChange(key, trackValue);
+        renderManageList();
+        renderReel(key);
+        renderCta();
+      });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(delBtn);
+      row.appendChild(label);
+      row.appendChild(actions);
+      manageListEl.appendChild(row);
+    });
+  }
+
+  function manageAddValue(){
+    const key = manageKey;
+    const cfg = reelsConfig[key];
+    const raw = manageAddInputEl.value;
+    if (!raw || !String(raw).trim()) return;
     let value;
     if (key === 'amount'){
       value = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
@@ -772,34 +948,19 @@
       value = String(raw).trim();
       if (!value) return;
     }
+    const currentSelected = cfg.values[mod(Math.round(state.positions[key]), cfg.values.length)];
     if (!cfg.values.includes(value)){
       cfg.values.push(value);
-      if (key === 'amount') cfg.values.sort((a,b) => a-b);
+      if (key === 'amount') cfg.values.sort((a, b) => a - b);
     }
-    const newIdx = cfg.values.indexOf(value);
-    state.positions[key] = newIdx;
-    state.velocities[key] = 0;
-    if (key === 'amount') state.amountFine = 0;
+    syncPositionAfterListChange(key, currentSelected);
+    manageAddInputEl.value = '';
+    renderManageList();
     renderReel(key);
     renderCta();
   }
-
-  // Renames the reel's currently-centered value in place (does not touch
-  // wording already saved on past transactions - only affects what shows
-  // up going forward).
-  async function editValue(key){
-    const cfg = reelsConfig[key];
-    const idx = mod(Math.round(state.positions[key]), cfg.values.length);
-    const current = cfg.values[idx];
-    const title = key === 'mode' ? 'Edit mode of transaction' : 'Edit category';
-    const raw = await showInputModal({ title, initialValue: String(current) });
-    if (raw == null) return;
-    const value = String(raw).trim();
-    if (!value || value === String(current)) return;
-    cfg.values[idx] = value;
-    renderReel(key);
-    renderCta();
-  }
+  manageAddBtnEl.addEventListener('pointerup', manageAddValue);
+  manageAddInputEl.addEventListener('keydown', (e) => { if (e.key === 'Enter'){ e.preventDefault(); manageAddValue(); } });
 
   // Adds a transaction either to Firestore (when signed in, so it syncs to
   // every device) or to localStorage (device-only). Firestore's onSnapshot
@@ -845,12 +1006,7 @@
   function applyTheme(){
     screenEl.setAttribute('data-theme', state.theme);
     document.documentElement.setAttribute('data-theme', state.theme);
-    if (isDark()){
-      themeIconEl.setAttribute('fill', 'var(--primary-text)');
-    } else {
-      themeIconEl.setAttribute('fill', 'none');
-    }
-    themeIconEl.setAttribute('stroke', `rgba(var(--fg-rgb),0.8)`);
+    themeToggleEl.innerHTML = isDark() ? MOON_ICON : SUN_ICON;
     renderAll();
   }
 
@@ -966,7 +1122,8 @@
   });
   historyClearEl.addEventListener('pointerup', async () => {
     if (!state.transactions.length) return;
-    if (!window.confirm('Clear all logged transactions? This cannot be undone.')) return;
+    const ok = await showConfirmModal({ title: 'Clear all transactions?', message: 'This cannot be undone.', okText: 'Clear all' });
+    if (!ok) return;
     if (fb && state.user){
       try {
         const snap = await fb.fsMod.getDocs(collectionRef());
@@ -981,7 +1138,11 @@
     }
   });
   async function deleteTransaction(t, rowEl){
-    if (!window.confirm(`Delete "${t.category} · ₹${t.amount.toLocaleString('en-IN')}"?`)) return;
+    const ok = await showConfirmModal({
+      title: 'Delete transaction?',
+      message: `"${t.category} · ₹${t.amount.toLocaleString('en-IN')}" will be permanently removed.`,
+    });
+    if (!ok) return;
     if (fb && state.user && t.cloud){
       try {
         await fb.fsMod.deleteDoc(fb.fsMod.doc(collectionRef(), t.id));
