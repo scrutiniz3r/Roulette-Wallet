@@ -77,6 +77,7 @@
     color:rgba(var(--fg-rgb),0.75); cursor:pointer; user-select:none; flex:0 0 auto;
   }
   .chip:hover{ background:var(--chip-hover-bg); }
+  .chip.chip-ghost{ visibility:hidden; pointer-events:none; }
   .title{ font-size:16px; font-weight:600; color:var(--primary-text); flex:1; text-align:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
   .card{
@@ -185,10 +186,10 @@
   }
   .history-list::-webkit-scrollbar{ display:none; }
   .history-row{
-    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    display:flex; align-items:center; gap:10px;
     padding:13px 4px; border-bottom:1px solid var(--sep-color); animation:wr-row-in 0.18s ease;
   }
-  .history-left{ min-width:0; }
+  .history-left{ flex:1; min-width:0; }
   .history-cat{ font-size:14px; font-weight:700; color:var(--primary-text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .history-mode{ font-size:11.5px; font-weight:600; color:rgba(var(--fg-rgb),0.5); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .history-amount{ font-size:14px; font-weight:800; color:var(--accent); white-space:nowrap; flex:0 0 auto; }
@@ -276,12 +277,15 @@
 
     <div class="row-top">
       <div class="chip" id="navChip" title="Transactions"></div>
-      <div class="title" id="titleEl">New expense</div>
+      <div class="title" id="titleEl">Scroll n Add</div>
       <div class="row-top-right">
         <div class="chip" id="installChip" title="Install app" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 14 14"><rect x="3.5" y="1" width="7" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M7 5v4M5 7h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
         </div>
         <div class="chip" id="themeToggle" title="Toggle theme"></div>
+        <div class="chip" id="backChip" title="Back" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        </div>
       </div>
     </div>
 
@@ -684,6 +688,7 @@
   const syncInfoEl = document.getElementById('syncInfo');
   const syncBtnEl = document.getElementById('syncBtn');
   const installChipEl = document.getElementById('installChip');
+  const backChipEl = document.getElementById('backChip');
   const modalOverlayEl = document.getElementById('modalOverlay');
   const modalTitleEl = document.getElementById('modalTitle');
   const modalMessageEl = document.getElementById('modalMessage');
@@ -744,7 +749,6 @@
     else if (manageOverlayEl.classList.contains('show')) closeManageModal();
   });
 
-  const BACK_ICON = '<svg width="14" height="14" viewBox="0 0 14 14"><path d="M9 2 4 7l5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
   const HISTORY_ICON = '<svg width="15" height="15" viewBox="0 0 15 15"><path d="M1.5 3.5h12M1.5 7.5h12M1.5 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>';
   const EDIT_ICON = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M9.5 1.5l3 3L5 12H2V9z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"></path></svg>';
   const TRASH_ICON = '<svg width="13" height="13" viewBox="0 0 14 14"><path d="M2 3.5h10M5.5 3.5V2h3v1.5M3 3.5l.6 8.5h6.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg>';
@@ -1086,9 +1090,24 @@
     state.view = v;
     entryViewEl.style.display = v === 'entry' ? '' : 'none';
     historyViewEl.style.display = v === 'history' ? '' : 'none';
-    titleEl.textContent = v === 'entry' ? 'New expense' : 'Transactions';
-    navChipEl.innerHTML = v === 'entry' ? HISTORY_ICON : BACK_ICON;
-    navChipEl.title = v === 'entry' ? 'Transactions' : 'Back';
+    titleEl.textContent = v === 'entry' ? 'Scroll n Add' : 'Transactions';
+    if (v === 'entry'){
+      navChipEl.classList.remove('chip-ghost');
+      navChipEl.innerHTML = HISTORY_ICON;
+      navChipEl.title = 'Transactions';
+      themeToggleEl.style.display = '';
+      backChipEl.style.display = 'none';
+    } else {
+      // Back moves to the far right on this screen; install/theme are
+      // already reachable from the home screen so they're hidden here
+      // rather than duplicated. navChip stays in the DOM (ghosted, not
+      // removed) purely so the title keeps the same centered layout.
+      navChipEl.classList.add('chip-ghost');
+      navChipEl.innerHTML = '';
+      themeToggleEl.style.display = 'none';
+      backChipEl.style.display = '';
+    }
+    updateInstallUI();
     if (v === 'history') renderHistory();
   }
 
@@ -1108,7 +1127,7 @@
     return /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
   }
   function updateInstallUI(){
-    if (isStandalone()){ installChipEl.style.display = 'none'; return; }
+    if (isStandalone() || state.view !== 'entry'){ installChipEl.style.display = 'none'; return; }
     installChipEl.style.display = (deferredInstallPrompt || isIOS()) ? '' : 'none';
   }
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -1249,6 +1268,10 @@
   navChipEl.addEventListener('pointerup', () => {
     buzz(6);
     setView(state.view === 'entry' ? 'history' : 'entry');
+  });
+  backChipEl.addEventListener('pointerup', () => {
+    buzz(6);
+    setView('entry');
   });
   historyClearEl.addEventListener('pointerup', async () => {
     if (!state.transactions.length) return;
