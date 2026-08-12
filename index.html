@@ -26,7 +26,15 @@
     --sep-color:rgba(0,0,0,0.08);
   }
   :root{ --accent:#ff4d6d; --accent-rgb:255,77,109; }
-  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  *{
+    box-sizing:border-box; -webkit-tap-highlight-color:transparent;
+    user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+    /* Without this, double-tapping anything (most likely to happen while
+       flicking a reel) triggers the browser's native word-select, which on
+       Android pops up a "Search Google for..." bar. Re-enabled below for
+       the actual text inputs, where selecting/editing typed text is wanted. */
+  }
+  input, textarea{ user-select:text; -webkit-user-select:text; -webkit-touch-callout:default; }
   html,body{ margin:0; padding:0; height:100%; overflow:hidden; overscroll-behavior:none; }
   body{
     min-height:100vh; display:flex; align-items:center; justify-content:center;
@@ -79,6 +87,8 @@
   .chip:hover{ background:var(--chip-hover-bg); }
   .chip.chip-ghost{ visibility:hidden; pointer-events:none; }
   .title{ font-size:16px; font-weight:600; color:var(--primary-text); flex:1; text-align:center; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .title-fast{ font-weight:800; font-style:italic; color:var(--accent); }
+  .title-slow{ font-weight:600; font-style:italic; color:var(--accent); }
 
   .card{
     background:var(--card-bg); border-radius:20px; padding:18px 20px; display:flex;
@@ -277,7 +287,7 @@
 
     <div class="row-top">
       <div class="chip" id="navChip" title="Transactions"></div>
-      <div class="title" id="titleEl">Scroll fast, Spend slow</div>
+      <div class="title" id="titleEl">scroll <span class="title-fast">fast</span> spend <span class="title-slow">slow</span></div>
       <div class="row-top-right">
         <div class="chip" id="installChip" title="Install app" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 14 14"><rect x="3.5" y="1" width="7" height="12" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.3"></rect><path d="M7 5v4M5 7h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"></path></svg>
@@ -538,6 +548,7 @@
   let lastCategoryValue = reelsConfig.category.values[0];
   let toastTimer = null, flashTimer = null;
   let fineTimeout = null, fineInterval = null;
+  let lastLogTime = 0;
 
   function mod(n, m){ return ((n % m) + m) % m; }
   function buzz(ms){ try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e){} }
@@ -1060,6 +1071,13 @@
   }
 
   function logExpense(){
+    // Guards against a single expense getting logged twice - either a
+    // genuine accidental double-tap, or the occasional duplicate pointerup
+    // some touchscreens fire for what was physically one tap.
+    const now = Date.now();
+    if (now - lastLogTime < 700) return;
+    lastLogTime = now;
+
     const idx = k => mod(Math.round(state.positions[k]), reelsConfig[k].values.length);
     const amount = reelsConfig.amount.values[idx('amount')] + state.amountFine;
     const modeVal = reelsConfig.mode.values[idx('mode')];
@@ -1090,7 +1108,9 @@
     state.view = v;
     entryViewEl.style.display = v === 'entry' ? '' : 'none';
     historyViewEl.style.display = v === 'history' ? '' : 'none';
-    titleEl.textContent = v === 'entry' ? 'Scroll fast, Spend slow' : 'Transactions';
+    titleEl.innerHTML = v === 'entry'
+      ? 'scroll <span class="title-fast">fast</span> spend <span class="title-slow">slow</span>'
+      : 'Transactions';
     if (v === 'entry'){
       navChipEl.classList.remove('chip-ghost');
       navChipEl.innerHTML = HISTORY_ICON;
